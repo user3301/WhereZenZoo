@@ -173,6 +173,38 @@ function Invoke-Symlinks {
         New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
         Write-Success 'Neovim config symlink created'
     }
+
+    # Git config — points ~\.config\git to submodule's git config directory
+    $gitLink = "$env:USERPROFILE\.config\git"
+    $gitSrc  = Join-Path $RepoRoot 'submodules\dotfiles\git\.config\git'
+
+    # Remove legacy ~/.gitconfig so dotfiles config is always the source of truth
+    $legacyGitConfig = "$env:USERPROFILE\.gitconfig"
+    if (Test-Path $legacyGitConfig) {
+        Remove-Item $legacyGitConfig -Force
+        Write-Host '[setup] Removed ~/.gitconfig — dotfiles config takes over'
+    }
+
+    if (-not (Test-Path $gitSrc)) {
+        Write-Skip 'submodules/dotfiles/git not found — run submodule init first'
+    } elseif (Test-Path $gitLink) {
+        $existing = Get-Item $gitLink
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $gitSrc) {
+            Write-Skip 'Git config symlink already set'
+        } else {
+            Rename-Item $gitLink "$gitLink.bak" -Force
+            Write-Host '[setup] Existing git config backed up to git.bak'
+            New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
+            Write-Success 'Git config symlink created'
+        }
+    } else {
+        $gitLinkParent = Split-Path $gitLink
+        if (-not (Test-Path $gitLinkParent)) {
+            New-Item -ItemType Directory -Path $gitLinkParent -Force | Out-Null
+        }
+        New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
+        Write-Success 'Git config symlink created'
+    }
 }
 
 # ---------------------------------------------------------------------------
