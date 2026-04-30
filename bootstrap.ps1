@@ -21,9 +21,30 @@ $ErrorActionPreference = 'Stop'
 $PWSH_WINGET_ID      = 'Microsoft.PowerShell'
 $PWSH_DEFAULT_PATH   = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
 
+$JUST_WINGET_ID      = 'Casey.Just'
+
 # WinGet result codes
-$WINGET_SUCCESS          = 0
+$WINGET_SUCCESS           = 0
 $WINGET_ALREADY_INSTALLED = -1978335219   # 0x8A15002D — package already installed
+
+# ---------------------------------------------------------------------------
+# Helper: install a package via winget, treating "already installed" as success
+# ---------------------------------------------------------------------------
+
+function Install-WingetPackage {
+    param(
+        [string]$Id,
+        [string]$Name
+    )
+    Write-Host "[bootstrap] Installing $Name..."
+    winget install --id $Id --exact --silent --accept-source-agreements --accept-package-agreements
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne $WINGET_SUCCESS -and $exitCode -ne $WINGET_ALREADY_INSTALLED) {
+        Write-Host "[bootstrap] ERROR: winget exited with code $exitCode. Failed to install $Name." -ForegroundColor Red
+        exit $exitCode
+    }
+    Write-Host "[bootstrap] $Name ready."
+}
 
 # ---------------------------------------------------------------------------
 # Helper: locate pwsh.exe — checks PATH first, then the standard install dir
@@ -55,10 +76,11 @@ if ($pwshExe) {
     # -----------------------------------------------------------------------
     Write-Host "[bootstrap] PowerShell 7 found at: $pwshExe"
 
-    # If we are already running inside PS7, nothing to do — future phases
-    # will be wired here.
+    # If we are already running inside PS7, install remaining meta-tools.
     if ($PSVersionTable.PSVersion.Major -ge 7) {
-        Write-Host '[bootstrap] Already running under PowerShell 7. Setup phases will run here (not yet implemented).'
+        Write-Host '[bootstrap] Running under PowerShell 7. Installing meta-tools...'
+        Install-WingetPackage -Id $JUST_WINGET_ID -Name 'just'
+        Write-Host '[bootstrap] Bootstrap complete. Run: just --list'
         exit 0
     }
 
@@ -81,21 +103,7 @@ if ($pwshExe) {
         exit 1
     }
 
-    winget install `
-        --id $PWSH_WINGET_ID `
-        --exact `
-        --silent `
-        --accept-source-agreements `
-        --accept-package-agreements
-
-    $wingetExit = $LASTEXITCODE
-
-    if ($wingetExit -ne $WINGET_SUCCESS -and $wingetExit -ne $WINGET_ALREADY_INSTALLED) {
-        Write-Host "[bootstrap] ERROR: winget exited with code $wingetExit. PowerShell 7 installation failed." -ForegroundColor Red
-        exit $wingetExit
-    }
-
-    Write-Host '[bootstrap] PowerShell 7 installed successfully.'
+    Install-WingetPackage -Id $PWSH_WINGET_ID -Name 'PowerShell 7'
 
     # PATH is not refreshed in the current session after winget installs;
     # fall back to the well-known default location.
