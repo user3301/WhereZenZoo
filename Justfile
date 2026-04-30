@@ -5,6 +5,7 @@
 default:
     @just --list
 
-# Install all packages via winget
+# Install all packages via winget, then fonts via oh-my-posh
 packages:
     winget import --import-file config/packages.json --accept-source-agreements --accept-package-agreements --disable-interactivity
+    oh-my-posh font install meslo

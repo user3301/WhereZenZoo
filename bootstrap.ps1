@@ -15,6 +15,17 @@
 $ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
+# Self-elevate if not running as Administrator
+# ---------------------------------------------------------------------------
+
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host '[bootstrap] Not running as Administrator — re-launching elevated...'
+    $shell = (Get-Process -Id $PID).Path
+    Start-Process $shell -ArgumentList "-ExecutionPolicy Bypass -File `"$($MyInvocation.MyCommand.Path)`"" -Verb RunAs -Wait
+    exit $LASTEXITCODE
+}
+
+# ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
@@ -26,6 +37,7 @@ $JUST_WINGET_ID      = 'Casey.Just'
 # WinGet result codes
 $WINGET_SUCCESS           = 0
 $WINGET_ALREADY_INSTALLED = -1978335219   # 0x8A15002D — package already installed
+$WINGET_NO_UPGRADE        = -1978335189   # 0x8A15004B — already on latest version
 
 # ---------------------------------------------------------------------------
 # Helper: install a package via winget, treating "already installed" as success
@@ -39,7 +51,7 @@ function Install-WingetPackage {
     Write-Host "[bootstrap] Installing $Name..."
     winget install --id $Id --exact --silent --accept-source-agreements --accept-package-agreements
     $exitCode = $LASTEXITCODE
-    if ($exitCode -ne $WINGET_SUCCESS -and $exitCode -ne $WINGET_ALREADY_INSTALLED) {
+    if ($exitCode -ne $WINGET_SUCCESS -and $exitCode -ne $WINGET_ALREADY_INSTALLED -and $exitCode -ne $WINGET_NO_UPGRADE) {
         Write-Host "[bootstrap] ERROR: winget exited with code $exitCode. Failed to install $Name." -ForegroundColor Red
         exit $exitCode
     }
@@ -76,12 +88,15 @@ if ($pwshExe) {
     # -----------------------------------------------------------------------
     Write-Host "[bootstrap] PowerShell 7 found at: $pwshExe"
 
-    # If we are already running inside PS7, install remaining meta-tools.
+    # If we are already running inside PS7, install remaining meta-tools then hand off to setup.
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         Write-Host '[bootstrap] Running under PowerShell 7. Installing meta-tools...'
         Install-WingetPackage -Id $JUST_WINGET_ID -Name 'just'
-        Write-Host '[bootstrap] Bootstrap complete. Run: just --list'
-        exit 0
+
+        Write-Host '[bootstrap] Handing off to setup.ps1...'
+        $setupScript = Join-Path $PSScriptRoot 'setup.ps1'
+        & $pwshExe -ExecutionPolicy Bypass -File $setupScript
+        exit $LASTEXITCODE
     }
 
     # We are still in PS5.1 but PS7 exists — re-launch under pwsh now.

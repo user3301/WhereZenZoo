@@ -1,0 +1,220 @@
+#Requires -Version 7.0
+<#
+.SYNOPSIS
+    Main setup orchestrator for Windows 11 dotfiles.
+
+.DESCRIPTION
+    Runs all setup phases in order. Each phase is idempotent — safe to re-run.
+    Individual phases can be run in isolation using the flags below.
+
+.PARAMETER All
+    Run all phases (default behaviour when no flags are passed).
+
+.PARAMETER Packages
+    Phase 2: Install WinGet packages and fonts.
+
+.PARAMETER Symlinks
+    Phase 3: Create dotfile symlinks (e.g. PowerShell profile stub).
+
+.PARAMETER Shell
+    Phase 4: Configure PowerShell profile and prompt.
+
+.NOTES
+    Run as: pwsh -ExecutionPolicy Bypass -File setup.ps1
+#>
+
+[CmdletBinding()]
+param(
+    [switch]$All,
+    [switch]$Packages,
+    [switch]$Symlinks,
+    [switch]$Shell
+)
+
+$ErrorActionPreference = 'Stop'
+
+$RepoRoot = $PSScriptRoot
+
+# If no flags passed, run everything
+if (-not ($Packages -or $Symlinks -or $Shell)) {
+    $All = $true
+}
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+function Write-Phase {
+    param([string]$Name)
+    Write-Host ""
+    Write-Host "===> $Name" -ForegroundColor Cyan
+}
+
+function Write-Success {
+    param([string]$Message)
+    Write-Host "[ok] $Message" -ForegroundColor Green
+}
+
+function Write-Skip {
+    param([string]$Message)
+    Write-Host "[skip] $Message" -ForegroundColor DarkGray
+}
+
+# ---------------------------------------------------------------------------
+# Phase 1: Validate prerequisites
+# ---------------------------------------------------------------------------
+
+function Invoke-ValidatePrerequisites {
+    Write-Phase 'Phase 1: Validate prerequisites'
+
+    if ($PSVersionTable.PSVersion.Major -lt 7) {
+        Write-Host '[error] PowerShell 7 or higher is required. Run bootstrap.ps1 first.' -ForegroundColor Red
+        exit 1
+    }
+    Write-Success "PowerShell $($PSVersionTable.PSVersion)"
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Host '[error] winget is not available. Install App Installer from the Microsoft Store.' -ForegroundColor Red
+        exit 1
+    }
+    Write-Success 'winget available'
+
+    if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
+        Write-Host '[warn] oh-my-posh not found — font install will be skipped. Run the Packages phase first.' -ForegroundColor Yellow
+    } else {
+        Write-Success 'oh-my-posh available'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Phase 0: Init submodules
+# ---------------------------------------------------------------------------
+
+function Invoke-Submodules {
+    Write-Phase 'Phase 0: Init submodules'
+    git -C $RepoRoot submodule update --init --recursive
+    Write-Success 'Submodules up to date'
+}
+
+# ---------------------------------------------------------------------------
+# Phase 2: Install packages
+# ---------------------------------------------------------------------------
+
+function Invoke-Packages {
+    Write-Phase 'Phase 2: Install packages'
+
+    $packagesFile = Join-Path $RepoRoot 'config/packages.json'
+
+    Write-Host '[setup] Running winget import...'
+    winget import --import-file $packagesFile --accept-source-agreements --accept-package-agreements --disable-interactivity
+    Write-Success 'WinGet packages installed'
+
+    if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+        Write-Host '[setup] Installing Meslo Nerd Font...'
+        oh-my-posh font install meslo
+        Write-Success 'Meslo Nerd Font installed'
+    } else {
+        Write-Skip 'oh-my-posh not available yet — re-run setup after winget completes and PATH refreshes'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Phase 3: Create symlinks
+# ---------------------------------------------------------------------------
+
+function Invoke-Symlinks {
+    Write-Phase 'Phase 3: Create symlinks'
+
+    # PowerShell profile stub — points $PROFILE to repo's profile.ps1
+    $profileDir  = Split-Path $PROFILE.CurrentUserAllHosts
+    $profileStub = $PROFILE.CurrentUserAllHosts
+    $profileSrc  = Join-Path $RepoRoot 'powershell/profile.ps1'
+
+    if (-not (Test-Path $profileSrc)) {
+        Write-Skip "powershell/profile.ps1 not found in repo — skipping profile stub"
+    } else {
+        if (-not (Test-Path $profileDir)) {
+            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+        }
+
+        if (Test-Path $profileStub) {
+            $existing = Get-Item $profileStub
+            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $profileSrc) {
+                Write-Skip 'PowerShell profile stub already set'
+            } else {
+                Rename-Item $profileStub "$profileStub.bak" -Force
+                Write-Host '[setup] Existing profile backed up to profile.ps1.bak'
+                New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
+                Write-Success 'PowerShell profile stub created'
+            }
+        } else {
+            New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
+            Write-Success 'PowerShell profile stub created'
+        }
+    }
+
+    # Neovim config — points $env:LOCALAPPDATA\nvim to submodule's nvim directory
+    $nvimLink = "$env:LOCALAPPDATA\nvim"
+    $nvimSrc  = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
+
+    if (-not (Test-Path $nvimSrc)) {
+        Write-Skip 'submodules/dotfiles/nvim not found — run submodule init first'
+    } elseif (Test-Path $nvimLink) {
+        $existing = Get-Item $nvimLink
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $nvimSrc) {
+            Write-Skip 'Neovim config symlink already set'
+        } else {
+            Rename-Item $nvimLink "$nvimLink.bak" -Force
+            Write-Host '[setup] Existing nvim config backed up to nvim.bak'
+            New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
+            Write-Success 'Neovim config symlink created'
+        }
+    } else {
+        New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
+        Write-Success 'Neovim config symlink created'
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Phase 4: Shell config — install PS modules
+# ---------------------------------------------------------------------------
+
+function Invoke-Shell {
+    Write-Phase 'Phase 4: Shell config'
+
+    $modulesFile = Join-Path $RepoRoot 'powershell/modules.json'
+    $cfg = Get-Content $modulesFile | ConvertFrom-Json
+
+    foreach ($mod in $cfg.modules) {
+        if (Get-Module -ListAvailable -Name $mod.name) {
+            Write-Skip "$($mod.name) already installed"
+        } else {
+            Write-Host "[setup] Installing module $($mod.name)..."
+            Install-Module -Name $mod.name -Scope $mod.scope -Force -SkipPublisherCheck
+            Write-Success "$($mod.name) installed"
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Run phases
+# ---------------------------------------------------------------------------
+
+Write-Host ''
+Write-Host '====================================' -ForegroundColor Cyan
+Write-Host '   Windows 11 Dotfiles — Setup      ' -ForegroundColor Cyan
+Write-Host '====================================' -ForegroundColor Cyan
+
+Invoke-ValidatePrerequisites
+
+Invoke-Submodules
+
+if ($All -or $Packages) { Invoke-Packages }
+if ($All -or $Symlinks) { Invoke-Symlinks }
+if ($All -or $Shell)    { Invoke-Shell    }
+
+Write-Host ''
+Write-Host '====================================' -ForegroundColor Cyan
+Write-Host '   Setup complete!                  ' -ForegroundColor Cyan
+Write-Host '====================================' -ForegroundColor Cyan
+Write-Host ''

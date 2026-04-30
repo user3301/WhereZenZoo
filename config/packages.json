@@ -4,8 +4,14 @@
   "Sources": [
     {
       "Packages": [
+        { "PackageIdentifier": "Anthropic.ClaudeCode" },
+        { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
         { "PackageIdentifier": "Git.Git" },
-        { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" }
+        { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" },
+        { "PackageIdentifier": "JesseDuffield.lazygit" },
+        { "PackageIdentifier": "LLVM.LLVM" },
+        { "PackageIdentifier": "Neovim.Neovim" },
+        { "PackageIdentifier": "sharkdp.fd" }
       ],
       "SourceDetails": {
         "Argument": "https://cdn.winget.microsoft.com/cache",
