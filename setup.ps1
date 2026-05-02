@@ -79,6 +79,12 @@ function Invoke-ValidatePrerequisites {
     }
     Write-Success 'winget available'
 
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Host '[error] git is not available. Run bootstrap.ps1 first (it installs Git before setup).' -ForegroundColor Red
+        exit 1
+    }
+    Write-Success 'git available'
+
     if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
         Write-Host '[warn] oh-my-posh not found — font install will be skipped. Run the Packages phase first.' -ForegroundColor Yellow
     } else {

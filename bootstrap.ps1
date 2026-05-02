@@ -33,6 +33,7 @@ $PWSH_WINGET_ID      = 'Microsoft.PowerShell'
 $PWSH_DEFAULT_PATH   = "$env:ProgramFiles\PowerShell\7\pwsh.exe"
 
 $JUST_WINGET_ID      = 'Casey.Just'
+$GIT_WINGET_ID       = 'Git.Git'
 
 # WinGet result codes
 $WINGET_SUCCESS           = 0
@@ -91,6 +92,7 @@ if ($pwshExe) {
     # If we are already running inside PS7, install remaining meta-tools then hand off to setup.
     if ($PSVersionTable.PSVersion.Major -ge 7) {
         Write-Host '[bootstrap] Running under PowerShell 7. Installing meta-tools...'
+        Install-WingetPackage -Id $GIT_WINGET_ID  -Name 'Git'
         Install-WingetPackage -Id $JUST_WINGET_ID -Name 'just'
 
         Write-Host '[bootstrap] Handing off to setup.ps1...'
