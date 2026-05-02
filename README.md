@@ -18,7 +18,7 @@ Fresh Windows 11 machine? One script does everything.
 **1. Clone this repo**
 
 ```powershell
-git clone https://github.com/user3301/.dotfiles $env:USERPROFILE\.dotfiles
+git clone https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\.dotfiles
 ```
 
 **2. Run bootstrap**
