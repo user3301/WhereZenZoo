@@ -115,9 +115,29 @@ function Invoke-Packages {
     winget import --import-file $packagesFile --accept-source-agreements --accept-package-agreements --disable-interactivity
     Write-Success 'WinGet packages installed'
 
+    # Refresh PATH so newly installed tools (e.g. oh-my-posh) are visible without reopening the terminal.
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
+
     if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
         Write-Host '[setup] Installing Meslo Nerd Font...'
         oh-my-posh font install meslo
+
+        # oh-my-posh copies font files but does not write registry entries, so
+        # Windows falls back to the old Powerline variant after a terminal restart.
+        # Enumerate the newly copied files and register them explicitly.
+        $fontsDir = "$env:USERPROFILE\AppData\Local\Microsoft\Windows\Fonts"
+        $regPath  = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+        $shell    = New-Object -ComObject Shell.Application
+        $folder   = $shell.Namespace($fontsDir)
+        Get-ChildItem "$fontsDir\MesloLGM*NerdFont*.ttf" -ErrorAction SilentlyContinue | ForEach-Object {
+            $item     = $folder.ParseName($_.Name)
+            $fontName = $folder.GetDetailsOf($item, 21)
+            if (-not $fontName) { $fontName = $folder.GetDetailsOf($item, 0) }
+            if ($fontName) {
+                Set-ItemProperty -Path $regPath -Name "$fontName (TrueType)" -Value $_.FullName -ErrorAction SilentlyContinue
+            }
+        }
+
         Write-Success 'Meslo Nerd Font installed'
     } else {
         Write-Skip 'oh-my-posh not available yet — re-run setup after winget completes and PATH refreshes'
