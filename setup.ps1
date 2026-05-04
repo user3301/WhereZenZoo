@@ -200,6 +200,35 @@ function Invoke-Symlinks {
         Write-Success 'Neovim config symlink created'
     }
 
+    # Zellij config — points %APPDATA%\Zellij\config\config.kdl to submodule's config
+    # Shared with WSL; SHELL env var controls which shell is used per platform
+    $zellijConfigDir  = "$env:APPDATA\Zellij\config"
+    $zellijConfigLink = "$zellijConfigDir\config.kdl"
+    $zellijConfigSrc  = Join-Path $RepoRoot 'submodules\dotfiles\zellij\.config\zellij\config.kdl'
+
+    if (-not (Test-Path $zellijConfigSrc)) {
+        Write-Skip 'submodules/dotfiles/zellij config not found — run submodule init first'
+    } else {
+        if (-not (Test-Path $zellijConfigDir)) {
+            New-Item -ItemType Directory -Path $zellijConfigDir -Force | Out-Null
+        }
+
+        if (Test-Path $zellijConfigLink) {
+            $existing = Get-Item $zellijConfigLink -Force
+            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $zellijConfigSrc) {
+                Write-Skip 'Zellij config symlink already set'
+            } else {
+                Rename-Item $zellijConfigLink "$zellijConfigLink.bak" -Force
+                Write-Host '[setup] Existing zellij config backed up to config.kdl.bak'
+                New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
+                Write-Success 'Zellij config symlink created'
+            }
+        } else {
+            New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
+            Write-Success 'Zellij config symlink created'
+        }
+    }
+
     # Git config — points ~\.config\git to submodule's git config directory
     $gitLink = "$env:USERPROFILE\.config\git"
     $gitSrc  = Join-Path $RepoRoot 'submodules\dotfiles\git\.config\git'
@@ -251,6 +280,16 @@ function Invoke-Shell {
             Install-Module -Name $mod.name -Scope $mod.scope -Force -SkipPublisherCheck
             Write-Success "$($mod.name) installed"
         }
+    }
+
+    # Set SHELL env var so zellij uses pwsh on Windows (WSL inherits its own $SHELL from the OS)
+    $currentShell = [System.Environment]::GetEnvironmentVariable('SHELL', 'User')
+    if ($currentShell -eq 'pwsh') {
+        Write-Skip 'SHELL=pwsh already set'
+    } else {
+        [System.Environment]::SetEnvironmentVariable('SHELL', 'pwsh', 'User')
+        $env:SHELL = 'pwsh'
+        Write-Success 'SHELL=pwsh set in user environment'
     }
 }
 

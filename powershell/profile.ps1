@@ -14,3 +14,15 @@ Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 . "$ProfileRoot\aliases.ps1"
 . "$ProfileRoot\functions.ps1"
 . "$ProfileRoot\prompt.ps1"
+
+# --- Zellij auto-start ---
+if (-not $env:ZELLIJ -and (Get-Command zellij -ErrorAction SilentlyContinue)) {
+    if ($env:ZELLIJ_AUTO_ATTACH -eq 'true') {
+        zellij attach -c
+    } else {
+        zellij
+    }
+    if ($env:ZELLIJ_AUTO_EXIT -eq 'true') {
+        exit
+    }
+}

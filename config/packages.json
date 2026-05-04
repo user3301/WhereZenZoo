@@ -6,12 +6,14 @@
       "Packages": [
         { "PackageIdentifier": "Anthropic.ClaudeCode" },
         { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
+        { "PackageIdentifier": "Fastfetch-cli.Fastfetch" },
         { "PackageIdentifier": "Git.Git" },
         { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" },
         { "PackageIdentifier": "JesseDuffield.lazygit" },
         { "PackageIdentifier": "LLVM.LLVM" },
         { "PackageIdentifier": "Neovim.Neovim" },
-        { "PackageIdentifier": "sharkdp.fd" }
+        { "PackageIdentifier": "sharkdp.fd" },
+        { "PackageIdentifier": "Zellij.Zellij" }
       ],
       "SourceDetails": {
         "Argument": "https://cdn.winget.microsoft.com/cache",

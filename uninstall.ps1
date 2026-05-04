@@ -131,6 +131,9 @@ function Invoke-RemoveSymlinks {
 
     Write-Warn '~/.gitconfig was deleted by setup.ps1 without a backup and cannot be auto-restored.'
     Write-Warn 'Recreate it manually if needed: git config --global user.name "..." --global user.email "..."'
+
+    # Zellij config
+    Remove-Symlink -LinkPath "$env:APPDATA\Zellij\config\config.kdl" -Description 'Zellij config'
 }
 
 # ---------------------------------------------------------------------------
@@ -152,6 +155,14 @@ function Invoke-UninstallModules {
             Write-Skip "$($mod.name) not installed"
         }
     }
+
+    # Remove SHELL env var set by setup.ps1 for zellij
+    if ([System.Environment]::GetEnvironmentVariable('SHELL', 'User') -eq 'pwsh') {
+        [System.Environment]::SetEnvironmentVariable('SHELL', $null, 'User')
+        Write-Done 'SHELL user environment variable removed'
+    } else {
+        Write-Skip 'SHELL not set by this setup — skipping'
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -165,11 +176,13 @@ function Invoke-UninstallPackages {
     $packages = @(
         @{ Id = 'Anthropic.ClaudeCode';           Name = 'Claude Code'  },
         @{ Id = 'BurntSushi.ripgrep.MSVC';        Name = 'ripgrep'      },
+        @{ Id = 'Fastfetch-cli.Fastfetch';         Name = 'fastfetch'    },
         @{ Id = 'JanDeDobbeleer.OhMyPosh';        Name = 'Oh My Posh'   },
         @{ Id = 'JesseDuffield.lazygit';           Name = 'lazygit'      },
         @{ Id = 'LLVM.LLVM';                       Name = 'LLVM/Clang'   },
         @{ Id = 'Neovim.Neovim';                   Name = 'Neovim'       },
         @{ Id = 'sharkdp.fd';                      Name = 'fd'           },
+        @{ Id = 'Zellij.Zellij';                   Name = 'Zellij'       },
         @{ Id = 'Casey.Just';                      Name = 'just'         },
         @{ Id = 'Git.Git';                         Name = 'Git'          },
         @{ Id = 'Microsoft.PowerShell';            Name = 'PowerShell 7' }
