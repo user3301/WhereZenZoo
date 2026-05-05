@@ -10,6 +10,13 @@ Set-PSReadLineOption -PredictionViewStyle ListView
 Set-PSReadLineOption -EditMode Emacs
 Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
 
+# --- Git Unix tools (provides `file` for yazi MIME detection, etc.) ---
+$gitRoot = Split-Path (Split-Path (Get-Command git -ErrorAction SilentlyContinue).Source)
+$gitUnixBin = Join-Path $gitRoot "usr\bin"
+if (Test-Path $gitUnixBin) {
+    $env:PATH = "$env:PATH;$gitUnixBin"
+}
+
 # --- Load profile components ---
 . "$ProfileRoot\aliases.ps1"
 . "$ProfileRoot\functions.ps1"

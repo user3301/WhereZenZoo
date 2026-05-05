@@ -13,6 +13,7 @@
         { "PackageIdentifier": "LLVM.LLVM" },
         { "PackageIdentifier": "Neovim.Neovim" },
         { "PackageIdentifier": "sharkdp.fd" },
+        { "PackageIdentifier": "sxyazi.yazi" },
         { "PackageIdentifier": "Zellij.Zellij" }
       ],
       "SourceDetails": {
