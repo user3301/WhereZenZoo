@@ -134,6 +134,9 @@ function Invoke-RemoveSymlinks {
 
     # Zellij config
     Remove-Symlink -LinkPath "$env:APPDATA\Zellij\config\config.kdl" -Description 'Zellij config'
+
+    # Fastfetch config
+    Remove-Symlink -LinkPath "$env:USERPROFILE\.config\fastfetch" -Description 'Fastfetch config'
 }
 
 # ---------------------------------------------------------------------------
