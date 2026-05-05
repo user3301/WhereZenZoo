@@ -260,6 +260,29 @@ function Invoke-Symlinks {
         New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
         Write-Success 'Git config symlink created'
     }
+
+    # Fastfetch config — points ~/.config/fastfetch to repo's fastfetch directory
+    $fastfetchLink = "$env:USERPROFILE\.config\fastfetch"
+    $fastfetchSrc  = Join-Path $RepoRoot 'fastfetch'
+
+    if (Test-Path $fastfetchLink) {
+        $existing = Get-Item $fastfetchLink -Force
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $fastfetchSrc) {
+            Write-Skip 'Fastfetch config symlink already set'
+        } else {
+            Rename-Item $fastfetchLink "$fastfetchLink.bak" -Force
+            Write-Host '[setup] Existing fastfetch config backed up to fastfetch.bak'
+            New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
+            Write-Success 'Fastfetch config symlink created'
+        }
+    } else {
+        $fastfetchLinkParent = Split-Path $fastfetchLink
+        if (-not (Test-Path $fastfetchLinkParent)) {
+            New-Item -ItemType Directory -Path $fastfetchLinkParent -Force | Out-Null
+        }
+        New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
+        Write-Success 'Fastfetch config symlink created'
+    }
 }
 
 # ---------------------------------------------------------------------------
