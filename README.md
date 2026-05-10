@@ -53,3 +53,13 @@ A UAC prompt will appear once to elevate. After that, the script will:
 ### Re-running
 
 `bootstrap.ps1` and `setup.ps1` are fully idempotent — safe to re-run at any time to apply new changes or set up an additional machine.
+
+## Uninstallation
+
+To clean up everything installed by this repo, run the provided uninstall script:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File $env:USERPROFILE\.dotfiles\uninstall.ps1
+```
+
+This removes symlinks, PowerShell modules, WinGet packages, and fonts.
