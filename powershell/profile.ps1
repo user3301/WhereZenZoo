@@ -30,7 +30,7 @@ if (-not $isAdmin -and -not $env:ZELLIJ -and (Get-Command zellij -ErrorAction Si
     } else {
         zellij
     }
-    if ($env:ZELLIJ_AUTO_EXIT -eq 'true') {
+    if ($LASTEXITCODE -eq 0 -and $env:ZELLIJ_AUTO_EXIT -eq 'true') {
         exit
     }
 }

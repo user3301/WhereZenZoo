@@ -261,6 +261,30 @@ function Invoke-Symlinks {
         Write-Success 'Git config symlink created'
     }
 
+    # GlazeWM config — points ~/.glaze-wm/config.yaml to repo's glazewm/config.yaml
+    $glazeWMConfigDir  = "$env:USERPROFILE\.glaze-wm"
+    $glazeWMConfigLink = "$glazeWMConfigDir\config.yaml"
+    $glazeWMConfigSrc  = Join-Path $RepoRoot 'glazewm\config.yaml'
+
+    if (-not (Test-Path $glazeWMConfigDir)) {
+        New-Item -ItemType Directory -Path $glazeWMConfigDir -Force | Out-Null
+    }
+
+    if (Test-Path $glazeWMConfigLink) {
+        $existing = Get-Item $glazeWMConfigLink -Force
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $glazeWMConfigSrc) {
+            Write-Skip 'GlazeWM config symlink already set'
+        } else {
+            Rename-Item $glazeWMConfigLink "$glazeWMConfigLink.bak" -Force
+            Write-Host '[setup] Existing GlazeWM config backed up to config.yaml.bak'
+            New-Item -ItemType SymbolicLink -Path $glazeWMConfigLink -Target $glazeWMConfigSrc | Out-Null
+            Write-Success 'GlazeWM config symlink created'
+        }
+    } else {
+        New-Item -ItemType SymbolicLink -Path $glazeWMConfigLink -Target $glazeWMConfigSrc | Out-Null
+        Write-Success 'GlazeWM config symlink created'
+    }
+
     # Fastfetch config — points ~/.config/fastfetch to repo's fastfetch directory
     $fastfetchLink = "$env:USERPROFILE\.config\fastfetch"
     $fastfetchSrc  = Join-Path $RepoRoot 'fastfetch'

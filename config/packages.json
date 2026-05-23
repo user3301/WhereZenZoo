@@ -8,6 +8,7 @@
         { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
         { "PackageIdentifier": "Fastfetch-cli.Fastfetch" },
         { "PackageIdentifier": "Git.Git" },
+        { "PackageIdentifier": "glzr-io.GlazeWM" },
         { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" },
         { "PackageIdentifier": "JesseDuffield.lazygit" },
         { "PackageIdentifier": "LLVM.LLVM" },
