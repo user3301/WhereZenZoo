@@ -135,6 +135,9 @@ function Invoke-RemoveSymlinks {
     # Zellij config
     Remove-Symlink -LinkPath "$env:APPDATA\Zellij\config\config.kdl" -Description 'Zellij config'
 
+    # GlazeWM config
+    Remove-Symlink -LinkPath "$env:USERPROFILE\.glaze-wm\config.yaml" -Description 'GlazeWM config'
+
     # Fastfetch config
     Remove-Symlink -LinkPath "$env:USERPROFILE\.config\fastfetch" -Description 'Fastfetch config'
 }
@@ -185,6 +188,7 @@ function Invoke-UninstallPackages {
         @{ Id = 'LLVM.LLVM';                       Name = 'LLVM/Clang'   },
         @{ Id = 'Neovim.Neovim';                   Name = 'Neovim'       },
         @{ Id = 'sharkdp.fd';                      Name = 'fd'           },
+        @{ Id = 'glzr-io.GlazeWM';                 Name = 'GlazeWM'      },
         @{ Id = 'Zellij.Zellij';                   Name = 'Zellij'       },
         @{ Id = 'Casey.Just';                      Name = 'just'         },
         @{ Id = 'Git.Git';                         Name = 'Git'          },
