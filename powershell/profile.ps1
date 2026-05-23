@@ -22,8 +22,9 @@ if (Test-Path $gitUnixBin) {
 . "$ProfileRoot\functions.ps1"
 . "$ProfileRoot\prompt.ps1"
 
-# --- Zellij auto-start ---
-if (-not $env:ZELLIJ -and (Get-Command zellij -ErrorAction SilentlyContinue)) {
+# --- Zellij auto-start (skip in elevated/admin sessions) ---
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin -and -not $env:ZELLIJ -and (Get-Command zellij -ErrorAction SilentlyContinue)) {
     if ($env:ZELLIJ_AUTO_ATTACH -eq 'true') {
         zellij attach -c
     } else {
