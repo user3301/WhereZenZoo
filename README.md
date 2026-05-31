@@ -6,14 +6,28 @@
 
 ## Quick Start
 
-Fresh Windows 11 machine? One script does everything.
+Fresh Windows 11 machine? One line does everything — no git required.
 
 ### Prerequisites
 
 - Windows 11
 - [App Installer](https://apps.microsoft.com/detail/9nblggh4nns1) (provides `winget`) — ships by default on Windows 11, install from the Microsoft Store if missing
 
-### Steps
+### One-liner (recommended)
+
+Open **Windows PowerShell** (Win + X → "Windows PowerShell") and run:
+
+```powershell
+irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
+```
+
+A UAC prompt will appear once to elevate. The script will then:
+
+1. Install Git via winget
+2. Clone this repo to `~\.dotfiles`
+3. Hand off to `bootstrap.ps1`, which installs PowerShell 7, `just`, and runs `setup.ps1`
+
+### Manual steps (if you already have git)
 
 **1. Clone this repo**
 
