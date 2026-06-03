@@ -8,7 +8,7 @@
 .DESCRIPTION
     1. Self-elevates to Administrator (re-downloads to a temp file if needed).
     2. Installs Git via winget.
-    3. Clones the repo to $env:USERPROFILE\.dotfiles (or pulls if already present).
+    3. Clones the repo to $env:USERPROFILE\dotfiles (or pulls if already present).
     4. Hands off to bootstrap.ps1 for the rest of the setup.
 #>
 
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $REPO_URL    = 'https://github.com/user3301/WhereZenZoo.git'
 $INSTALL_URL = 'https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1'
-$CLONE_DIR   = "$env:USERPROFILE\.dotfiles"
+$CLONE_DIR   = "$env:USERPROFILE\dotfiles"
 $GIT_ID      = 'Git.Git'
 $WINGET_OK   = 0, -1978335219, -1978335189   # success / already-installed / already-latest
 
@@ -67,11 +67,27 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
 # ── Clone or update the repo ─────────────────────────────────────────────────
 if (Test-Path (Join-Path $CLONE_DIR '.git')) {
     Write-Host "[install] Repo already present at $CLONE_DIR — pulling latest..."
-    git -C $CLONE_DIR pull --ff-only
+    git -C "$CLONE_DIR" pull --ff-only
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[install] ERROR: git pull failed (exit $LASTEXITCODE)." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
+} elseif (Test-Path $CLONE_DIR) {
+    Write-Host "[install] ERROR: '$CLONE_DIR' already exists but is not a git repo. Remove it and re-run." -ForegroundColor Red
+    exit 1
 } else {
     Write-Host "[install] Cloning repo to $CLONE_DIR..."
-    git clone $REPO_URL $CLONE_DIR
+    git clone "$REPO_URL" "$CLONE_DIR"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[install] ERROR: git clone failed (exit $LASTEXITCODE)." -ForegroundColor Red
+        exit $LASTEXITCODE
+    }
 }
+
+# ── TEMPORARY: stop here to verify clone destination ────────────────────────
+Write-Host "[install] TEST STOP — repo cloned to: $CLONE_DIR" -ForegroundColor Yellow
+Write-Host '[install] Remove this block and restore the bootstrap handoff when done.' -ForegroundColor Yellow
+exit 0
 
 # ── Hand off to bootstrap.ps1 ────────────────────────────────────────────────
 $bootstrap = Join-Path $CLONE_DIR 'bootstrap.ps1'

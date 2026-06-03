@@ -24,7 +24,7 @@ irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | ie
 A UAC prompt will appear once to elevate. The script will then:
 
 1. Install Git via winget
-2. Clone this repo to `~\.dotfiles`
+2. Clone this repo to `~\dotfiles`
 3. Hand off to `bootstrap.ps1`, which installs PowerShell 7, `just`, and runs `setup.ps1`
 
 ### Manual steps (if you already have git)
@@ -32,13 +32,13 @@ A UAC prompt will appear once to elevate. The script will then:
 **1. Clone this repo**
 
 ```powershell
-git clone https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\.dotfiles
+git clone https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\dotfiles
 ```
 
 **2. Run bootstrap**
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File $env:USERPROFILE\.dotfiles\bootstrap.ps1
+powershell.exe -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
 ```
 
 A UAC prompt will appear once to elevate. After that, the script will:
@@ -73,7 +73,7 @@ A UAC prompt will appear once to elevate. After that, the script will:
 To clean up everything installed by this repo, run the provided uninstall script:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File $env:USERPROFILE\.dotfiles\uninstall.ps1
+pwsh -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\uninstall.ps1
 ```
 
 This removes symlinks, PowerShell modules, WinGet packages, and fonts.
