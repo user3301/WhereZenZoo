@@ -135,9 +135,6 @@ function Invoke-RemoveSymlinks {
     # Zellij config
     Remove-Symlink -LinkPath "$env:APPDATA\Zellij\config\config.kdl" -Description 'Zellij config'
 
-    # GlazeWM config
-    Remove-Symlink -LinkPath "$env:USERPROFILE\.glaze-wm\config.yaml" -Description 'GlazeWM config'
-
     # Fastfetch config
     Remove-Symlink -LinkPath "$env:USERPROFILE\.config\fastfetch" -Description 'Fastfetch config'
 }
