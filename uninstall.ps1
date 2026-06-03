@@ -180,15 +180,12 @@ function Invoke-UninstallPackages {
 
     # Packages installed by bootstrap.ps1 + setup.ps1
     $packages = @(
-        @{ Id = 'Anthropic.ClaudeCode';           Name = 'Claude Code'  },
         @{ Id = 'BurntSushi.ripgrep.MSVC';        Name = 'ripgrep'      },
         @{ Id = 'Fastfetch-cli.Fastfetch';         Name = 'fastfetch'    },
         @{ Id = 'JanDeDobbeleer.OhMyPosh';        Name = 'Oh My Posh'   },
         @{ Id = 'JesseDuffield.lazygit';           Name = 'lazygit'      },
-        @{ Id = 'LLVM.LLVM';                       Name = 'LLVM/Clang'   },
-        @{ Id = 'Neovim.Neovim';                   Name = 'Neovim'       },
+@{ Id = 'Neovim.Neovim';                   Name = 'Neovim'       },
         @{ Id = 'sharkdp.fd';                      Name = 'fd'           },
-        @{ Id = 'glzr-io.GlazeWM';                 Name = 'GlazeWM'      },
         @{ Id = 'Zellij.Zellij';                   Name = 'Zellij'       },
         @{ Id = 'Casey.Just';                      Name = 'just'         },
         @{ Id = 'Git.Git';                         Name = 'Git'          },

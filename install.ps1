@@ -84,11 +84,6 @@ if (Test-Path (Join-Path $CLONE_DIR '.git')) {
     }
 }
 
-# ── TEMPORARY: stop here to verify clone destination ────────────────────────
-Write-Host "[install] TEST STOP — repo cloned to: $CLONE_DIR" -ForegroundColor Yellow
-Write-Host '[install] Remove this block and restore the bootstrap handoff when done.' -ForegroundColor Yellow
-exit 0
-
 # ── Hand off to bootstrap.ps1 ────────────────────────────────────────────────
 $bootstrap = Join-Path $CLONE_DIR 'bootstrap.ps1'
 Write-Host '[install] Handing off to bootstrap.ps1...'

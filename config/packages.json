@@ -4,15 +4,12 @@
   "Sources": [
     {
       "Packages": [
-        { "PackageIdentifier": "Anthropic.ClaudeCode" },
         { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
         { "PackageIdentifier": "Fastfetch-cli.Fastfetch" },
         { "PackageIdentifier": "Git.Git" },
-        { "PackageIdentifier": "glzr-io.GlazeWM" },
         { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" },
         { "PackageIdentifier": "JesseDuffield.lazygit" },
-        { "PackageIdentifier": "LLVM.LLVM" },
-        { "PackageIdentifier": "Neovim.Neovim" },
+{ "PackageIdentifier": "Neovim.Neovim" },
         { "PackageIdentifier": "sharkdp.fd" },
         { "PackageIdentifier": "sxyazi.yazi" },
         { "PackageIdentifier": "Zellij.Zellij" }
