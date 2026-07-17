@@ -1,5 +1,9 @@
 # WhereZenZoo
 
+![](./assets/lz-battle-robe.png)
+
+> "WhereZenZoo('味儿真足'）- your Windows 11 dev environment, seasoned just right. PowerShell meets dotfiles swagger, no more clicking 'Next' like a peasant. 100% less mouse and 100% more 良子 energy."
+
 WhereZenZoo is a small Windows 11 development-environment bootstrapper built around [Scoop](https://scoop.sh/). It avoids WinGet so newly installed command-line tools are available through Scoop shims immediately after installation.
 
 ## Quick start
