@@ -4,6 +4,24 @@
     Main WhereZenZoo setup orchestrator.
 .DESCRIPTION
     Installs Scoop packages, creates symlinks, and installs PowerShell modules.
+.PARAMETER All
+    Runs every setup phase. This is the default when no phase flags are supplied.
+.PARAMETER Packages
+    Installs buckets and packages listed in config/scoop.json.
+.PARAMETER Symlinks
+    Creates user-profile symlinks for the PowerShell profile and fastfetch config.
+.PARAMETER Shell
+    Installs PowerShell modules listed in powershell/modules.json.
+.EXAMPLE
+    pwsh -ExecutionPolicy Bypass -File .\setup.ps1
+
+    Runs the full setup.
+.EXAMPLE
+    pwsh -ExecutionPolicy Bypass -File .\setup.ps1 -Packages
+
+    Installs or refreshes only Scoop packages.
+.NOTES
+    Run bootstrap.ps1 first on a fresh machine so Scoop and PowerShell 7 are available.
 #>
 
 [CmdletBinding()]

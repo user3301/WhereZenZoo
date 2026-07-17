@@ -4,6 +4,12 @@
     Bootstraps the Scoop-based WhereZenZoo setup.
 .DESCRIPTION
     Ensures Scoop, Git, PowerShell 7, and just are installed, then runs setup.ps1 under pwsh.
+.EXAMPLE
+    powershell.exe -ExecutionPolicy Bypass -File .\bootstrap.ps1
+
+    Installs the core Scoop-managed bootstrap tools and starts setup.ps1.
+.NOTES
+    This script has no parameters. Run from a non-administrator PowerShell session because Scoop is a per-user package manager.
 #>
 
 $ErrorActionPreference = 'Stop'

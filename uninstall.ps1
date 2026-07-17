@@ -2,6 +2,18 @@
 <#
 .SYNOPSIS
     Removes WhereZenZoo symlinks, modules, and Scoop packages.
+.DESCRIPTION
+    Reverses the setup phases by removing symlinks created by setup.ps1, uninstalling PowerShell modules declared by this repo, and uninstalling configured Scoop packages. Scoop itself is intentionally left installed.
+.PARAMETER All
+    Runs every uninstall phase.
+.PARAMETER Symlinks
+    Removes WhereZenZoo symlinks and restores .bak backups when present.
+.PARAMETER Shell
+    Uninstalls PowerShell modules listed in powershell/modules.json.
+.PARAMETER Packages
+    Uninstalls Scoop packages listed in config/scoop.json.
+.NOTES
+    Existing non-symlink files are skipped to avoid accidental data loss.
 #>
 
 [CmdletBinding(SupportsShouldProcess)]

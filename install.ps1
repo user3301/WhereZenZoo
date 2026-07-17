@@ -4,6 +4,12 @@
     Remote installer for WhereZenZoo.
 .DESCRIPTION
     Installs Scoop and Git if needed, clones the repository, then runs bootstrap.ps1.
+.EXAMPLE
+    irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
+
+    Downloads and runs the installer on a fresh Windows user profile.
+.NOTES
+    Run from a non-administrator Windows PowerShell session. Scoop installs tools per-user and should not be run elevated.
 #>
 
 $ErrorActionPreference = 'Stop'
