@@ -1,11 +1,13 @@
-# Windows 11 dotfiles — task runner
-# Run `just` or `just --list` to see all targets
+# WhereZenZoo task runner
 
-# Default: list all targets
 default:
     @just --list
 
-# Install all packages via winget, then fonts via oh-my-posh
+setup:
+    pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1
+
 packages:
-    winget import --import-file config/packages.json --accept-source-agreements --accept-package-agreements --disable-interactivity
-    oh-my-posh font install meslo
+    pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./setup.ps1 -Packages
+
+check:
+    pwsh -NoLogo -NoProfile -Command '$$ErrorActionPreference="Stop"; Get-ChildItem -Recurse -File -Include *.ps1 | ForEach-Object { $$tokens=$$null; $$errors=$$null; [System.Management.Automation.Language.Parser]::ParseFile($$_.FullName, [ref]$$tokens, [ref]$$errors) > $$null; if ($$errors) { throw "Parse errors in $$($$_.FullName): $$($$errors | Out-String)" } }; Get-ChildItem -Recurse -File -Include *.json | ForEach-Object { Get-Content -Raw $$_.FullName | ConvertFrom-Json > $$null }; "checks passed"'

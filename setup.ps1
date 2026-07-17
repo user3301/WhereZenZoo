@@ -1,26 +1,9 @@
 #Requires -Version 7.0
-<#
+<#!
 .SYNOPSIS
-    Main setup orchestrator for Windows 11 dotfiles.
-
+    Main WhereZenZoo setup orchestrator.
 .DESCRIPTION
-    Runs all setup phases in order. Each phase is idempotent — safe to re-run.
-    Individual phases can be run in isolation using the flags below.
-
-.PARAMETER All
-    Run all phases (default behaviour when no flags are passed).
-
-.PARAMETER Packages
-    Phase 2: Install WinGet packages and fonts.
-
-.PARAMETER Symlinks
-    Phase 3: Create dotfile symlinks (e.g. PowerShell profile stub).
-
-.PARAMETER Shell
-    Phase 4: Configure PowerShell profile and prompt.
-
-.NOTES
-    Run as: pwsh -ExecutionPolicy Bypass -File setup.ps1
+    Installs Scoop packages, creates symlinks, and installs PowerShell modules.
 #>
 
 [CmdletBinding()]
@@ -32,309 +15,132 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-
 $RepoRoot = $PSScriptRoot
 
-# If no flags passed, run everything
 if (-not ($Packages -or $Symlinks -or $Shell)) {
     $All = $true
 }
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+function Write-Phase { param([string]$Name) Write-Host "`n===> $Name" -ForegroundColor Cyan }
+function Write-Success { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
+function Write-Skip { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
 
-function Write-Phase {
-    param([string]$Name)
-    Write-Host ""
-    Write-Host "===> $Name" -ForegroundColor Cyan
+function Add-ScoopToPath {
+    $paths = @(
+        (Join-Path $env:USERPROFILE 'scoop\shims'),
+        (Join-Path $env:USERPROFILE 'scoop\apps\git\current\cmd'),
+        (Join-Path $env:USERPROFILE 'scoop\apps\pwsh\current')
+    ) | Where-Object { Test-Path $_ }
+
+    foreach ($path in $paths) {
+        if (($env:PATH -split ';') -notcontains $path) {
+            $env:PATH = "$path;$env:PATH"
+        }
+    }
 }
-
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[ok] $Message" -ForegroundColor Green
-}
-
-function Write-Skip {
-    param([string]$Message)
-    Write-Host "[skip] $Message" -ForegroundColor DarkGray
-}
-
-# ---------------------------------------------------------------------------
-# Phase 1: Validate prerequisites
-# ---------------------------------------------------------------------------
 
 function Invoke-ValidatePrerequisites {
-    Write-Phase 'Phase 1: Validate prerequisites'
+    Write-Phase 'Validate prerequisites'
 
     if ($PSVersionTable.PSVersion.Major -lt 7) {
-        Write-Host '[error] PowerShell 7 or higher is required. Run bootstrap.ps1 first.' -ForegroundColor Red
-        exit 1
+        throw 'PowerShell 7 or higher is required. Run bootstrap.ps1 first.'
     }
     Write-Success "PowerShell $($PSVersionTable.PSVersion)"
 
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Host '[error] winget is not available. Install App Installer from the Microsoft Store.' -ForegroundColor Red
-        exit 1
+    Add-ScoopToPath
+    if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+        throw 'Scoop is required. Run install.ps1 or bootstrap.ps1 first.'
     }
-    Write-Success 'winget available'
-
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Host '[error] git is not available. Run bootstrap.ps1 first (it installs Git before setup).' -ForegroundColor Red
-        exit 1
-    }
-    Write-Success 'git available'
-
-    if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
-        Write-Host '[warn] oh-my-posh not found — font install will be skipped. Run the Packages phase first.' -ForegroundColor Yellow
-    } else {
-        Write-Success 'oh-my-posh available'
-    }
+    Write-Success 'Scoop available'
 }
-
-# ---------------------------------------------------------------------------
-# Phase 0: Init submodules
-# ---------------------------------------------------------------------------
-
-function Invoke-Submodules {
-    Write-Phase 'Phase 0: Init submodules'
-    git -C $RepoRoot submodule update --init --recursive
-    Write-Success 'Submodules up to date'
-}
-
-# ---------------------------------------------------------------------------
-# Phase 2: Install packages
-# ---------------------------------------------------------------------------
 
 function Invoke-Packages {
-    Write-Phase 'Phase 2: Install packages'
+    Write-Phase 'Install Scoop packages'
 
-    $packagesFile = Join-Path $RepoRoot 'config/packages.json'
+    $config = Get-Content (Join-Path $RepoRoot 'config/scoop.json') -Raw | ConvertFrom-Json
 
-    Write-Host '[setup] Running winget import...'
-    winget import --import-file $packagesFile --accept-source-agreements --accept-package-agreements --disable-interactivity
-    Write-Success 'WinGet packages installed'
-
-    # Refresh PATH so newly installed tools (e.g. oh-my-posh) are visible without reopening the terminal.
-    $env:PATH = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
-
-    if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-        Write-Host '[setup] Installing Meslo Nerd Font...'
-        oh-my-posh font install meslo
-
-        # oh-my-posh copies font files but does not write registry entries, so
-        # Windows falls back to the old Powerline variant after a terminal restart.
-        # Enumerate the newly copied files and register them explicitly.
-        $fontsDir = "$env:USERPROFILE\AppData\Local\Microsoft\Windows\Fonts"
-        $regPath  = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
-        $shell    = New-Object -ComObject Shell.Application
-        $folder   = $shell.Namespace($fontsDir)
-        Get-ChildItem "$fontsDir\MesloLGM*NerdFont*.ttf" -ErrorAction SilentlyContinue | ForEach-Object {
-            $item     = $folder.ParseName($_.Name)
-            $fontName = $folder.GetDetailsOf($item, 21)
-            if (-not $fontName) { $fontName = $folder.GetDetailsOf($item, 0) }
-            if ($fontName) {
-                Set-ItemProperty -Path $regPath -Name "$fontName (TrueType)" -Value $_.FullName -ErrorAction SilentlyContinue
-            }
+    foreach ($bucket in $config.buckets) {
+        $existingBuckets = scoop bucket list 2>$null
+        if ($existingBuckets -match "(^|\s)$([regex]::Escape($bucket))(\s|$)") {
+            Write-Skip "Bucket $bucket already added"
+        } else {
+            Write-Host "[setup] Adding Scoop bucket $bucket..."
+            scoop bucket add $bucket
+            Write-Success "Bucket $bucket added"
         }
-
-        Write-Success 'Meslo Nerd Font installed'
-    } else {
-        Write-Skip 'oh-my-posh not available yet — re-run setup after winget completes and PATH refreshes'
     }
+
+    foreach ($package in $config.packages) {
+        $installed = scoop list 2>$null | Select-String -Pattern "^$([regex]::Escape($package))\s"
+        if ($installed) {
+            Write-Skip "$package already installed"
+        } else {
+            Write-Host "[setup] Installing $package..."
+            scoop install $package
+            Write-Success "$package installed"
+        }
+    }
+
+    Add-ScoopToPath
 }
 
-# ---------------------------------------------------------------------------
-# Phase 3: Create symlinks
-# ---------------------------------------------------------------------------
+function Set-Symlink {
+    param(
+        [Parameter(Mandatory)][string]$LinkPath,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$Description
+    )
+
+    $parent = Split-Path $LinkPath
+    if (-not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    if (Test-Path $LinkPath) {
+        $existing = Get-Item $LinkPath -Force
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $TargetPath) {
+            Write-Skip "$Description already linked"
+            return
+        }
+
+        Rename-Item $LinkPath "$LinkPath.bak" -Force
+        Write-Host "[setup] Existing $Description backed up to $LinkPath.bak"
+    }
+
+    New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath | Out-Null
+    Write-Success "$Description linked"
+}
 
 function Invoke-Symlinks {
-    Write-Phase 'Phase 3: Create symlinks'
+    Write-Phase 'Create symlinks'
 
-    # PowerShell profile stub — points $PROFILE to repo's profile.ps1
-    $profileDir  = Split-Path $PROFILE.CurrentUserAllHosts
-    $profileStub = $PROFILE.CurrentUserAllHosts
-    $profileSrc  = Join-Path $RepoRoot 'powershell/profile.ps1'
-
-    if (-not (Test-Path $profileSrc)) {
-        Write-Skip "powershell/profile.ps1 not found in repo — skipping profile stub"
-    } else {
-        if (-not (Test-Path $profileDir)) {
-            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-        }
-
-        if (Test-Path $profileStub) {
-            $existing = Get-Item $profileStub
-            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $profileSrc) {
-                Write-Skip 'PowerShell profile stub already set'
-            } else {
-                Rename-Item $profileStub "$profileStub.bak" -Force
-                Write-Host '[setup] Existing profile backed up to profile.ps1.bak'
-                New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
-                Write-Success 'PowerShell profile stub created'
-            }
-        } else {
-            New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
-            Write-Success 'PowerShell profile stub created'
-        }
-    }
-
-    # Neovim config — points $env:LOCALAPPDATA\nvim to submodule's nvim directory
-    $nvimLink = "$env:LOCALAPPDATA\nvim"
-    $nvimSrc  = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
-
-    if (-not (Test-Path $nvimSrc)) {
-        Write-Skip 'submodules/dotfiles/nvim not found — run submodule init first'
-    } elseif (Test-Path $nvimLink) {
-        $existing = Get-Item $nvimLink
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $nvimSrc) {
-            Write-Skip 'Neovim config symlink already set'
-        } else {
-            Rename-Item $nvimLink "$nvimLink.bak" -Force
-            Write-Host '[setup] Existing nvim config backed up to nvim.bak'
-            New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
-            Write-Success 'Neovim config symlink created'
-        }
-    } else {
-        New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
-        Write-Success 'Neovim config symlink created'
-    }
-
-    # Zellij config — points %APPDATA%\Zellij\config\config.kdl to submodule's config
-    # Shared with WSL; SHELL env var controls which shell is used per platform
-    $zellijConfigDir  = "$env:APPDATA\Zellij\config"
-    $zellijConfigLink = "$zellijConfigDir\config.kdl"
-    $zellijConfigSrc  = Join-Path $RepoRoot 'submodules\dotfiles\zellij\.config\zellij\config.kdl'
-
-    if (-not (Test-Path $zellijConfigSrc)) {
-        Write-Skip 'submodules/dotfiles/zellij config not found — run submodule init first'
-    } else {
-        if (-not (Test-Path $zellijConfigDir)) {
-            New-Item -ItemType Directory -Path $zellijConfigDir -Force | Out-Null
-        }
-
-        if (Test-Path $zellijConfigLink) {
-            $existing = Get-Item $zellijConfigLink -Force
-            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $zellijConfigSrc) {
-                Write-Skip 'Zellij config symlink already set'
-            } else {
-                Rename-Item $zellijConfigLink "$zellijConfigLink.bak" -Force
-                Write-Host '[setup] Existing zellij config backed up to config.kdl.bak'
-                New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
-                Write-Success 'Zellij config symlink created'
-            }
-        } else {
-            New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
-            Write-Success 'Zellij config symlink created'
-        }
-    }
-
-    # Git config — points ~\.config\git to submodule's git config directory
-    $gitLink = "$env:USERPROFILE\.config\git"
-    $gitSrc  = Join-Path $RepoRoot 'submodules\dotfiles\git\.config\git'
-
-    # Remove legacy ~/.gitconfig so dotfiles config is always the source of truth
-    $legacyGitConfig = "$env:USERPROFILE\.gitconfig"
-    if (Test-Path $legacyGitConfig) {
-        Remove-Item $legacyGitConfig -Force
-        Write-Host '[setup] Removed ~/.gitconfig — dotfiles config takes over'
-    }
-
-    if (-not (Test-Path $gitSrc)) {
-        Write-Skip 'submodules/dotfiles/git not found — run submodule init first'
-    } elseif (Test-Path $gitLink) {
-        $existing = Get-Item $gitLink
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $gitSrc) {
-            Write-Skip 'Git config symlink already set'
-        } else {
-            Rename-Item $gitLink "$gitLink.bak" -Force
-            Write-Host '[setup] Existing git config backed up to git.bak'
-            New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
-            Write-Success 'Git config symlink created'
-        }
-    } else {
-        $gitLinkParent = Split-Path $gitLink
-        if (-not (Test-Path $gitLinkParent)) {
-            New-Item -ItemType Directory -Path $gitLinkParent -Force | Out-Null
-        }
-        New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
-        Write-Success 'Git config symlink created'
-    }
-
-    # Fastfetch config — points ~/.config/fastfetch to repo's fastfetch directory
-    $fastfetchLink = "$env:USERPROFILE\.config\fastfetch"
-    $fastfetchSrc  = Join-Path $RepoRoot 'fastfetch'
-
-    if (Test-Path $fastfetchLink) {
-        $existing = Get-Item $fastfetchLink -Force
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $fastfetchSrc) {
-            Write-Skip 'Fastfetch config symlink already set'
-        } else {
-            Rename-Item $fastfetchLink "$fastfetchLink.bak" -Force
-            Write-Host '[setup] Existing fastfetch config backed up to fastfetch.bak'
-            New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
-            Write-Success 'Fastfetch config symlink created'
-        }
-    } else {
-        $fastfetchLinkParent = Split-Path $fastfetchLink
-        if (-not (Test-Path $fastfetchLinkParent)) {
-            New-Item -ItemType Directory -Path $fastfetchLinkParent -Force | Out-Null
-        }
-        New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
-        Write-Success 'Fastfetch config symlink created'
-    }
+    Set-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -TargetPath (Join-Path $RepoRoot 'powershell/profile.ps1') -Description 'PowerShell profile'
+    Set-Symlink -LinkPath (Join-Path $env:USERPROFILE '.config\fastfetch') -TargetPath (Join-Path $RepoRoot 'fastfetch') -Description 'fastfetch config'
 }
-
-# ---------------------------------------------------------------------------
-# Phase 4: Shell config — install PS modules
-# ---------------------------------------------------------------------------
 
 function Invoke-Shell {
-    Write-Phase 'Phase 4: Shell config'
+    Write-Phase 'Install PowerShell modules'
 
-    $modulesFile = Join-Path $RepoRoot 'powershell/modules.json'
-    $cfg = Get-Content $modulesFile | ConvertFrom-Json
-
-    foreach ($mod in $cfg.modules) {
-        if (Get-Module -ListAvailable -Name $mod.name) {
-            Write-Skip "$($mod.name) already installed"
+    $config = Get-Content (Join-Path $RepoRoot 'powershell/modules.json') -Raw | ConvertFrom-Json
+    foreach ($module in $config.modules) {
+        if (Get-Module -ListAvailable -Name $module.name) {
+            Write-Skip "$($module.name) already installed"
         } else {
-            Write-Host "[setup] Installing module $($mod.name)..."
-            Install-Module -Name $mod.name -Scope $mod.scope -Force -SkipPublisherCheck
-            Write-Success "$($mod.name) installed"
+            Write-Host "[setup] Installing module $($module.name)..."
+            Install-Module -Name $module.name -Scope $module.scope -Force -SkipPublisherCheck
+            Write-Success "$($module.name) installed"
         }
     }
-
-    # Set SHELL env var so zellij uses pwsh on Windows (WSL inherits its own $SHELL from the OS)
-    $currentShell = [System.Environment]::GetEnvironmentVariable('SHELL', 'User')
-    if ($currentShell -eq 'pwsh') {
-        Write-Skip 'SHELL=pwsh already set'
-    } else {
-        [System.Environment]::SetEnvironmentVariable('SHELL', 'pwsh', 'User')
-        $env:SHELL = 'pwsh'
-        Write-Success 'SHELL=pwsh set in user environment'
-    }
 }
-
-# ---------------------------------------------------------------------------
-# Run phases
-# ---------------------------------------------------------------------------
 
 Write-Host ''
 Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Windows 11 Dotfiles — Setup      ' -ForegroundColor Cyan
+Write-Host '   WhereZenZoo — Scoop Setup        ' -ForegroundColor Cyan
 Write-Host '====================================' -ForegroundColor Cyan
 
 Invoke-ValidatePrerequisites
-
-Invoke-Submodules
-
 if ($All -or $Packages) { Invoke-Packages }
 if ($All -or $Symlinks) { Invoke-Symlinks }
-if ($All -or $Shell)    { Invoke-Shell    }
+if ($All -or $Shell) { Invoke-Shell }
 
-Write-Host ''
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Setup complete!                  ' -ForegroundColor Cyan
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host ''
+Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."

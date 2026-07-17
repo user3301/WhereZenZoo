@@ -1,36 +1,20 @@
-$ProfileRoot = Split-Path (Get-Item $PSCommandPath).Target
+$ErrorActionPreference = 'Continue'
 
-# --- Modules ---
-Import-Module Terminal-Icons
-Import-Module z
+$repoProfileDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$promptTheme = Join-Path $repoProfileDir 'theme.omp.json'
 
-# --- PSReadLine ---
-Set-PSReadLineOption -PredictionSource HistoryAndPlugin
-Set-PSReadLineOption -PredictionViewStyle ListView
-Set-PSReadLineOption -EditMode Emacs
-Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-
-# --- Git Unix tools (provides `file` for yazi MIME detection, etc.) ---
-$gitRoot = Split-Path (Split-Path (Get-Command git -ErrorAction SilentlyContinue).Source)
-$gitUnixBin = Join-Path $gitRoot "usr\bin"
-if (Test-Path $gitUnixBin) {
-    $env:PATH = "$env:PATH;$gitUnixBin"
+if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
+    oh-my-posh init pwsh --config $promptTheme | Invoke-Expression
 }
 
-# --- Load profile components ---
-. "$ProfileRoot\aliases.ps1"
-. "$ProfileRoot\functions.ps1"
-. "$ProfileRoot\prompt.ps1"
-
-# --- Zellij auto-start (skip in elevated/admin sessions) ---
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin -and -not $env:ZELLIJ -and (Get-Command zellij -ErrorAction SilentlyContinue)) {
-    if ($env:ZELLIJ_AUTO_ATTACH -eq 'true') {
-        zellij attach -c
-    } else {
-        zellij
-    }
-    if ($LASTEXITCODE -eq 0 -and $env:ZELLIJ_AUTO_EXIT -eq 'true') {
-        exit
-    }
+if (Get-Module -ListAvailable -Name Terminal-Icons) {
+    Import-Module Terminal-Icons
 }
+
+if (Get-Module -ListAvailable -Name z) {
+    Import-Module z
+}
+
+Set-PSReadLineOption -EditMode Windows -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+Set-Alias vim nvim -ErrorAction SilentlyContinue
+Set-Alias ll Get-ChildItem -ErrorAction SilentlyContinue
