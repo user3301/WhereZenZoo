@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-<#!
+<#
 .SYNOPSIS
     Remote installer for WhereZenZoo.
 .DESCRIPTION

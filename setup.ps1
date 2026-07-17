@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-<#!
+<#
 .SYNOPSIS
     Main WhereZenZoo setup orchestrator.
 .DESCRIPTION

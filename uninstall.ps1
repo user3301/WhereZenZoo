@@ -1,5 +1,5 @@
 #Requires -Version 7.0
-<#!
+<#
 .SYNOPSIS
     Removes WhereZenZoo symlinks, modules, and Scoop packages.
 #>

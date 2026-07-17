@@ -1,5 +1,5 @@
 #Requires -Version 5.1
-<#!
+<#
 .SYNOPSIS
     Bootstraps the Scoop-based WhereZenZoo setup.
 .DESCRIPTION
