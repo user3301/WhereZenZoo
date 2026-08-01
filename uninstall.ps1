@@ -1,257 +1,173 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Uninstall script — reverses everything setup.ps1 and bootstrap.ps1 applied.
-
+    Reverts a WhereZenZoo setup.
 .DESCRIPTION
-    Removes symlinks (restoring .bak backups where they exist), uninstalls
-    PowerShell modules, removes Meslo Nerd Font files and their registry
-    entries, and optionally uninstalls WinGet packages.
+    Removes the symlinks created by setup.ps1 (restoring any .bak backups) and
+    uninstalls only the winget packages that setup.ps1 actually installed, as
+    recorded in the per-user state file. Tools that were already present before
+    setup ran are never removed.
 
-    All phases run by default. Pass individual flags to run a subset.
-
+    Runnable either from a clone or piped straight from the web:
+        irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/uninstall.ps1 | iex
 .PARAMETER All
-    Run all phases including package uninstallation.
-
-.PARAMETER Packages
-    Phase 3: Uninstall WinGet packages installed by setup.ps1 / bootstrap.ps1.
-
+    Runs every phase (symlinks + packages). This is the default.
 .PARAMETER Symlinks
-    Phase 1: Remove symlinks and restore backups.
-
-.PARAMETER Shell
-    Phase 2: Uninstall PowerShell modules.
-
-.PARAMETER Fonts
-    Phase 4: Remove Meslo Nerd Font files and registry entries.
-
+    Removes the WhereZenZoo symlinks only.
+.PARAMETER Packages
+    Uninstalls the state-recorded winget packages only.
+.PARAMETER Purge
+    Additionally removes LazyVim runtime data (%LOCALAPPDATA%\nvim-data) and the
+    ~\dotfiles clone (only when not running from inside it).
 .NOTES
-    Run as: pwsh -ExecutionPolicy Bypass -File uninstall.ps1
-    Some steps (font removal, package uninstall) require Administrator.
+    Non-symlink files are left untouched to avoid data loss.
 #>
 
-[CmdletBinding(SupportsShouldProcess)]
+[CmdletBinding()]
 param(
     [switch]$All,
     [switch]$Symlinks,
-    [switch]$Shell,
     [switch]$Packages,
-    [switch]$Fonts
+    [switch]$Purge
 )
 
 $ErrorActionPreference = 'Stop'
 
-# If no flags passed, run all phases
-if (-not ($Symlinks -or $Shell -or $Packages -or $Fonts -or $All)) {
-    $Symlinks = $true
-    $Shell    = $true
-    $Packages = $true
-    $Fonts    = $true
-}
-if ($All) {
-    $Symlinks = $true
-    $Shell    = $true
-    $Packages = $true
-    $Fonts    = $true
+if (-not ($Symlinks -or $Packages)) {
+    $All = $true
 }
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+function Write-Phase { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
+function Write-Done  { param([string]$Message) Write-Host "[removed] $Message" -ForegroundColor Green }
+function Write-Skip  { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
+function Write-Warn  { param([string]$Message) Write-Host "[warn] $Message" -ForegroundColor Yellow }
 
-function Write-Phase {
-    param([string]$Name)
-    Write-Host ""
-    Write-Host "===> $Name" -ForegroundColor Cyan
-}
-
-function Write-Done {
-    param([string]$Message)
-    Write-Host "[removed] $Message" -ForegroundColor Green
-}
-
-function Write-Restored {
-    param([string]$Message)
-    Write-Host "[restored] $Message" -ForegroundColor Green
-}
-
-function Write-Skip {
-    param([string]$Message)
-    Write-Host "[skip] $Message" -ForegroundColor DarkGray
-}
-
-function Write-Warn {
-    param([string]$Message)
-    Write-Host "[warn] $Message" -ForegroundColor Yellow
+function Get-StatePath {
+    return (Join-Path (Join-Path $env:LOCALAPPDATA 'WhereZenZoo') 'installed.json')
 }
 
 function Remove-Symlink {
     param(
-        [string]$LinkPath,
-        [string]$Description
+        [Parameter(Mandatory)][string]$LinkPath,
+        [Parameter(Mandatory)][string]$TargetSuffix,  # link is ours only if its target ends with this
+        [Parameter(Mandatory)][string]$Description
     )
 
     if (-not (Test-Path $LinkPath)) {
-        Write-Skip "$Description — not found"
+        Write-Skip "$Description not found"
         return
     }
 
     $item = Get-Item $LinkPath -Force
     if ($item.LinkType -ne 'SymbolicLink') {
-        Write-Warn "$Description at '$LinkPath' is not a symlink — skipping to avoid data loss"
+        Write-Warn "$Description at $LinkPath is not a symlink; leaving it alone"
         return
     }
 
-    Remove-Item $LinkPath -Force -Recurse -ErrorAction SilentlyContinue
-    Write-Done "$Description symlink removed"
+    $target = ($item.Target | Select-Object -First 1)
+    if ($target -and ($target -notlike "*$TargetSuffix")) {
+        Write-Warn "$Description points at $target (not a WhereZenZoo target); leaving it alone"
+        return
+    }
 
-    # Restore backup if one exists
+    # Delete only the reparse point. Remove-Item -Recurse on a directory symlink can
+    # delete the TARGET's contents on PowerShell 5.1, so delete the link directly.
+    if ($item.PSIsContainer) {
+        [System.IO.Directory]::Delete($item.FullName, $false)
+    } else {
+        [System.IO.File]::Delete($item.FullName)
+    }
+    Write-Done "$Description symlink"
+
     $backup = "$LinkPath.bak"
     if (Test-Path $backup) {
         Rename-Item $backup $LinkPath -Force
-        Write-Restored "$Description restored from backup"
+        Write-Host "[restored] $Description backup restored"
     }
 }
-
-# ---------------------------------------------------------------------------
-# Phase 1: Remove symlinks
-# ---------------------------------------------------------------------------
 
 function Invoke-RemoveSymlinks {
-    Write-Phase 'Phase 1: Remove symlinks'
-
-    # PowerShell profile
-    Remove-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -Description 'PowerShell profile'
-
-    # Neovim config
-    Remove-Symlink -LinkPath "$env:LOCALAPPDATA\nvim" -Description 'Neovim config'
-
-    # Git config
-    Remove-Symlink -LinkPath "$env:USERPROFILE\.config\git" -Description 'Git config'
-
-    Write-Warn '~/.gitconfig was deleted by setup.ps1 without a backup and cannot be auto-restored.'
-    Write-Warn 'Recreate it manually if needed: git config --global user.name "..." --global user.email "..."'
-
-    # Zellij config
-    Remove-Symlink -LinkPath "$env:APPDATA\Zellij\config\config.kdl" -Description 'Zellij config'
-
-    # Fastfetch config
-    Remove-Symlink -LinkPath "$env:USERPROFILE\.config\fastfetch" -Description 'Fastfetch config'
+    Write-Phase 'Remove symlinks'
+    Remove-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') `
+        -TargetSuffix 'nvim\.config\nvim' -Description 'Neovim config'
+    Remove-Symlink -LinkPath $PROFILE.CurrentUserAllHosts `
+        -TargetSuffix 'powershell\profile.ps1' -Description 'PowerShell profile'
 }
 
-# ---------------------------------------------------------------------------
-# Phase 2: Uninstall PowerShell modules
-# ---------------------------------------------------------------------------
+function Invoke-RemovePackages {
+    Write-Phase 'Remove winget packages'
 
-function Invoke-UninstallModules {
-    Write-Phase 'Phase 2: Uninstall PowerShell modules'
-
-    $modulesFile = Join-Path $PSScriptRoot 'powershell/modules.json'
-    $cfg = Get-Content $modulesFile | ConvertFrom-Json
-
-    foreach ($mod in $cfg.modules) {
-        if (Get-Module -ListAvailable -Name $mod.name) {
-            Write-Host "[uninstall] Removing module $($mod.name)..."
-            Uninstall-Module -Name $mod.name -AllVersions -Force -ErrorAction SilentlyContinue
-            Write-Done "$($mod.name) uninstalled"
-        } else {
-            Write-Skip "$($mod.name) not installed"
-        }
-    }
-
-    # Remove SHELL env var set by setup.ps1 for zellij
-    if ([System.Environment]::GetEnvironmentVariable('SHELL', 'User') -eq 'pwsh') {
-        [System.Environment]::SetEnvironmentVariable('SHELL', $null, 'User')
-        Write-Done 'SHELL user environment variable removed'
-    } else {
-        Write-Skip 'SHELL not set by this setup — skipping'
-    }
-}
-
-# ---------------------------------------------------------------------------
-# Phase 3: Uninstall WinGet packages
-# ---------------------------------------------------------------------------
-
-function Invoke-UninstallPackages {
-    Write-Phase 'Phase 3: Uninstall WinGet packages'
-
-    # Packages installed by bootstrap.ps1 + setup.ps1
-    $packages = @(
-        @{ Id = 'BurntSushi.ripgrep.MSVC';        Name = 'ripgrep'      },
-        @{ Id = 'Fastfetch-cli.Fastfetch';         Name = 'fastfetch'    },
-        @{ Id = 'JanDeDobbeleer.OhMyPosh';        Name = 'Oh My Posh'   },
-        @{ Id = 'JesseDuffield.lazygit';           Name = 'lazygit'      },
-@{ Id = 'Neovim.Neovim';                   Name = 'Neovim'       },
-        @{ Id = 'sharkdp.fd';                      Name = 'fd'           },
-        @{ Id = 'Zellij.Zellij';                   Name = 'Zellij'       },
-        @{ Id = 'Casey.Just';                      Name = 'just'         },
-        @{ Id = 'Git.Git';                         Name = 'Git'          },
-        @{ Id = 'Microsoft.PowerShell';            Name = 'PowerShell 7' }
-    )
-
-    foreach ($pkg in $packages) {
-        Write-Host "[uninstall] Removing $($pkg.Name) ($($pkg.Id))..."
-        winget uninstall --id $pkg.Id --exact --silent --disable-interactivity 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Done "$($pkg.Name) uninstalled"
-        } else {
-            Write-Skip "$($pkg.Name) — not installed or already removed"
-        }
-    }
-}
-
-# ---------------------------------------------------------------------------
-# Phase 4: Remove Meslo Nerd Font
-# ---------------------------------------------------------------------------
-
-function Invoke-RemoveFonts {
-    Write-Phase 'Phase 4: Remove Meslo Nerd Font'
-
-    $fontsDir = "$env:USERPROFILE\AppData\Local\Microsoft\Windows\Fonts"
-    $regPath  = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
-
-    $fontFiles = Get-ChildItem "$fontsDir\MesloLGM*NerdFont*.ttf" -ErrorAction SilentlyContinue
-
-    if (-not $fontFiles) {
-        Write-Skip 'No Meslo Nerd Font files found'
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Write-Skip 'winget not available'
         return
     }
 
-    $shell  = New-Object -ComObject Shell.Application
-    $folder = $shell.Namespace($fontsDir)
+    $statePath = Get-StatePath
+    if (-not (Test-Path $statePath)) {
+        Write-Skip 'No install record found — nothing installed by WhereZenZoo to remove'
+        return
+    }
 
-    foreach ($file in $fontFiles) {
-        # Remove registry entry
-        $item     = $folder.ParseName($file.Name)
-        $fontName = $folder.GetDetailsOf($item, 21)
-        if (-not $fontName) { $fontName = $folder.GetDetailsOf($item, 0) }
-        $regKey = "$fontName (TrueType)"
-        if ($fontName -and (Get-ItemProperty -Path $regPath -Name $regKey -ErrorAction SilentlyContinue)) {
-            Remove-ItemProperty -Path $regPath -Name $regKey -Force -ErrorAction SilentlyContinue
+    $ids = @()
+    try { $ids = @(Get-Content $statePath -Raw | ConvertFrom-Json) } catch { $ids = @() }
+    if (-not $ids) {
+        Write-Skip 'Install record is empty'
+        Remove-Item $statePath -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    $failed = @()
+    foreach ($id in $ids) {
+        Write-Host "[uninstall] Removing $id..."
+        winget uninstall --id $id --exact --silent --disable-interactivity 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Done $id
+        } else {
+            Write-Warn "winget could not remove $id (exit $LASTEXITCODE)"
+            $failed += $id
         }
+    }
 
-        # Remove font file
-        Remove-Item $file.FullName -Force -ErrorAction SilentlyContinue
-        Write-Done "Font removed: $($file.Name)"
+    if ($failed) {
+        ConvertTo-Json -InputObject $failed | Set-Content -Path $statePath -Encoding UTF8
+        Write-Warn "Kept $($failed.Count) unremoved package(s) in the install record."
+    } else {
+        Remove-Item $statePath -Force -ErrorAction SilentlyContinue
     }
 }
 
-# ---------------------------------------------------------------------------
-# Run phases
-# ---------------------------------------------------------------------------
+function Invoke-Purge {
+    Write-Phase 'Purge extras'
+
+    $nvimData = Join-Path $env:LOCALAPPDATA 'nvim-data'
+    if (Test-Path $nvimData) {
+        Remove-Item $nvimData -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Done 'LazyVim data (nvim-data)'
+    } else {
+        Write-Skip 'LazyVim data not found'
+    }
+
+    $cloneDir = Join-Path $env:USERPROFILE 'dotfiles'
+    $runningFrom = if ($PSScriptRoot) { (Resolve-Path $PSScriptRoot).Path } else { '' }
+    if (Test-Path $cloneDir) {
+        if ($runningFrom -and ($runningFrom -like "$cloneDir*")) {
+            Write-Warn "Not deleting $cloneDir because uninstall is running from inside it."
+        } else {
+            Remove-Item $cloneDir -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Done "clone at $cloneDir"
+        }
+    } else {
+        Write-Skip 'Clone directory not found'
+    }
+}
 
 Write-Host ''
 Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Windows 11 Dotfiles — Uninstall  ' -ForegroundColor Cyan
+Write-Host '   WhereZenZoo — Uninstall          ' -ForegroundColor Cyan
 Write-Host '====================================' -ForegroundColor Cyan
 
-if ($Symlinks) { Invoke-RemoveSymlinks  }
-if ($Shell)    { Invoke-UninstallModules }
-if ($Packages) { Invoke-UninstallPackages }
-if ($Fonts)    { Invoke-RemoveFonts     }
+if ($All -or $Symlinks) { Invoke-RemoveSymlinks }
+if ($All -or $Packages) { Invoke-RemovePackages }
+if ($Purge)             { Invoke-Purge }
 
-Write-Host ''
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Uninstall complete!              ' -ForegroundColor Cyan
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host ''
+Write-Host "`nUninstall complete."

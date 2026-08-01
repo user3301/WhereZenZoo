@@ -1,18 +1,17 @@
 {
   "$schema": "https://aka.ms/winget-packages.schema.2.0.json",
-  "CreationDate": "2026-04-30T00:00:00.000-00:00",
+  "CreationDate": "2026-08-01T00:00:00.000-00:00",
   "Sources": [
     {
       "Packages": [
-        { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
-        { "PackageIdentifier": "Fastfetch-cli.Fastfetch" },
         { "PackageIdentifier": "Git.Git" },
-        { "PackageIdentifier": "JanDeDobbeleer.OhMyPosh" },
-        { "PackageIdentifier": "JesseDuffield.lazygit" },
-{ "PackageIdentifier": "Neovim.Neovim" },
+        { "PackageIdentifier": "Neovim.Neovim" },
         { "PackageIdentifier": "sharkdp.fd" },
-        { "PackageIdentifier": "sxyazi.yazi" },
-        { "PackageIdentifier": "Zellij.Zellij" }
+        { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
+        { "PackageIdentifier": "JesseDuffield.lazygit" },
+        { "PackageIdentifier": "ezwinports.make" },
+        { "PackageIdentifier": "Starship.Starship" },
+        { "PackageIdentifier": "zig.zig" }
       ],
       "SourceDetails": {
         "Argument": "https://cdn.winget.microsoft.com/cache",

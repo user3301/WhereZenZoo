@@ -1,7 +1,0 @@
-{
-  "modules": [
-    { "name": "PSReadLine",     "scope": "CurrentUser" },
-    { "name": "Terminal-Icons", "scope": "CurrentUser" },
-    { "name": "z",              "scope": "CurrentUser" }
-  ]
-}

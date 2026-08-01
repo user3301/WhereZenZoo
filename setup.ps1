@@ -1,340 +1,203 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Main setup orchestrator for Windows 11 dotfiles.
-
+    Main WhereZenZoo setup orchestrator (winget-based).
 .DESCRIPTION
-    Runs all setup phases in order. Each phase is idempotent — safe to re-run.
-    Individual phases can be run in isolation using the flags below.
+    Installs the winget packages declared in config/packages.json and creates the
+    dotfile symlinks (Neovim config from the dotfiles submodule, PowerShell profile).
 
+    The run is idempotent: packages that are already installed are skipped, and
+    symlinks that already point at the right target are left alone. Packages this
+    script installs are recorded in a per-user state file so uninstall.ps1 can
+    revert only what was actually installed here.
 .PARAMETER All
-    Run all phases (default behaviour when no flags are passed).
-
+    Runs every phase. This is the default when no phase flag is supplied.
 .PARAMETER Packages
-    Phase 2: Install WinGet packages and fonts.
-
+    Installs the winget packages listed in config/packages.json.
 .PARAMETER Symlinks
-    Phase 3: Create dotfile symlinks (e.g. PowerShell profile stub).
+    Creates the Neovim config and PowerShell profile symlinks.
+.EXAMPLE
+    powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1
 
-.PARAMETER Shell
-    Phase 4: Configure PowerShell profile and prompt.
+    Runs the full setup.
+.EXAMPLE
+    powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1 -Packages
 
+    Installs or refreshes only the winget packages.
 .NOTES
-    Run as: pwsh -ExecutionPolicy Bypass -File setup.ps1
+    Requires Developer Mode so symlinks can be created without elevation, and
+    winget (App Installer). Run bootstrap.ps1 / install.ps1 on a fresh machine.
 #>
 
 [CmdletBinding()]
 param(
     [switch]$All,
     [switch]$Packages,
-    [switch]$Symlinks,
-    [switch]$Shell
+    [switch]$Symlinks
 )
 
 $ErrorActionPreference = 'Stop'
-
 $RepoRoot = $PSScriptRoot
 
-# If no flags passed, run everything
-if (-not ($Packages -or $Symlinks -or $Shell)) {
+if (-not ($Packages -or $Symlinks)) {
     $All = $true
 }
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-function Write-Phase {
-    param([string]$Name)
-    Write-Host ""
-    Write-Host "===> $Name" -ForegroundColor Cyan
+# Maps each winget package id to the command it provides, so an install that was
+# made outside winget's knowledge (e.g. portable git on PATH) is still respected.
+$PackageCommands = @{
+    'Git.Git'                 = 'git'
+    'Neovim.Neovim'           = 'nvim'
+    'sharkdp.fd'              = 'fd'
+    'BurntSushi.ripgrep.MSVC' = 'rg'
+    'JesseDuffield.lazygit'   = 'lazygit'
+    'ezwinports.make'         = 'make'
+    'Starship.Starship'       = 'starship'
+    'zig.zig'                 = 'zig'
 }
 
-function Write-Success {
-    param([string]$Message)
-    Write-Host "[ok] $Message" -ForegroundColor Green
+function Write-Phase   { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
+function Write-Success { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
+function Write-Skip    { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
+function Write-Warn    { param([string]$Message) Write-Host "[warn] $Message" -ForegroundColor Yellow }
+
+function Update-SessionPath {
+    # Rebuild the current session PATH so tools installed during this run are
+    # visible without reopening the terminal. WinGet drops shims into Links.
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    $parts   = @($machine, $user, $links) | Where-Object { $_ }
+    $env:PATH = ($parts -join ';')
 }
 
-function Write-Skip {
-    param([string]$Message)
-    Write-Host "[skip] $Message" -ForegroundColor DarkGray
+function Get-StatePath {
+    return (Join-Path (Join-Path $env:LOCALAPPDATA 'WhereZenZoo') 'installed.json')
 }
 
-# ---------------------------------------------------------------------------
-# Phase 1: Validate prerequisites
-# ---------------------------------------------------------------------------
+function Add-InstalledPackage {
+    param([Parameter(Mandatory)][string]$Id)
+
+    $path = Get-StatePath
+    $dir  = Split-Path $path
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+    $ids = @()
+    if (Test-Path $path) {
+        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json) } catch { $ids = @() }
+    }
+    if ($ids -notcontains $Id) {
+        $ids += $Id
+        ConvertTo-Json -InputObject $ids | Set-Content -Path $path -Encoding UTF8
+    }
+}
+
+function Test-PackageInstalled {
+    param([Parameter(Mandatory)][string]$Id)
+
+    # Fast path: the command it provides is already on PATH.
+    $cmd = $PackageCommands[$Id]
+    if ($cmd -and (Get-Command $cmd -ErrorAction SilentlyContinue)) { return $true }
+
+    # Otherwise ask winget whether the exact id is installed (covers ARP entries).
+    winget list --id $Id --exact --accept-source-agreements 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
 
 function Invoke-ValidatePrerequisites {
-    Write-Phase 'Phase 1: Validate prerequisites'
+    Write-Phase 'Validate prerequisites'
 
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
-        Write-Host '[error] PowerShell 7 or higher is required. Run bootstrap.ps1 first.' -ForegroundColor Red
-        exit 1
+    if ($PSVersionTable.PSVersion.Major -lt 5) {
+        throw 'Windows PowerShell 5.1 or higher is required.'
     }
     Write-Success "PowerShell $($PSVersionTable.PSVersion)"
 
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        Write-Host '[error] winget is not available. Install App Installer from the Microsoft Store.' -ForegroundColor Red
-        exit 1
+        throw 'winget is not available. Install "App Installer" from the Microsoft Store, then re-run.'
     }
     Write-Success 'winget available'
-
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Host '[error] git is not available. Run bootstrap.ps1 first (it installs Git before setup).' -ForegroundColor Red
-        exit 1
-    }
-    Write-Success 'git available'
-
-    if (-not (Get-Command oh-my-posh -ErrorAction SilentlyContinue)) {
-        Write-Host '[warn] oh-my-posh not found — font install will be skipped. Run the Packages phase first.' -ForegroundColor Yellow
-    } else {
-        Write-Success 'oh-my-posh available'
-    }
 }
-
-# ---------------------------------------------------------------------------
-# Phase 0: Init submodules
-# ---------------------------------------------------------------------------
-
-function Invoke-Submodules {
-    Write-Phase 'Phase 0: Init submodules'
-    git -C $RepoRoot submodule update --init --recursive
-    Write-Success 'Submodules up to date'
-}
-
-# ---------------------------------------------------------------------------
-# Phase 2: Install packages
-# ---------------------------------------------------------------------------
 
 function Invoke-Packages {
-    Write-Phase 'Phase 2: Install packages'
+    Write-Phase 'Install winget packages'
 
-    $packagesFile = Join-Path $RepoRoot 'config/packages.json'
+    $manifest = Get-Content (Join-Path $RepoRoot 'config/packages.json') -Raw | ConvertFrom-Json
+    $ids = $manifest.Sources[0].Packages.PackageIdentifier
 
-    Write-Host '[setup] Running winget import...'
-    winget import --import-file $packagesFile --accept-source-agreements --accept-package-agreements --disable-interactivity
-    Write-Success 'WinGet packages installed'
-
-    # Refresh PATH so newly installed tools (e.g. oh-my-posh) are visible without reopening the terminal.
-    $env:PATH = [System.Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path', 'User')
-
-    if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-        Write-Host '[setup] Installing Meslo Nerd Font...'
-        oh-my-posh font install meslo
-
-        # oh-my-posh copies font files but does not write registry entries, so
-        # Windows falls back to the old Powerline variant after a terminal restart.
-        # Enumerate the newly copied files and register them explicitly.
-        $fontsDir = "$env:USERPROFILE\AppData\Local\Microsoft\Windows\Fonts"
-        $regPath  = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
-        $shell    = New-Object -ComObject Shell.Application
-        $folder   = $shell.Namespace($fontsDir)
-        Get-ChildItem "$fontsDir\MesloLGM*NerdFont*.ttf" -ErrorAction SilentlyContinue | ForEach-Object {
-            $item     = $folder.ParseName($_.Name)
-            $fontName = $folder.GetDetailsOf($item, 21)
-            if (-not $fontName) { $fontName = $folder.GetDetailsOf($item, 0) }
-            if ($fontName) {
-                Set-ItemProperty -Path $regPath -Name "$fontName (TrueType)" -Value $_.FullName -ErrorAction SilentlyContinue
-            }
+    foreach ($id in $ids) {
+        if (Test-PackageInstalled -Id $id) {
+            Write-Skip "$id already installed"
+            continue
         }
 
-        Write-Success 'Meslo Nerd Font installed'
-    } else {
-        Write-Skip 'oh-my-posh not available yet — re-run setup after winget completes and PATH refreshes'
+        Write-Host "[setup] Installing $id..."
+        winget install --id $id --exact --source winget --silent `
+            --accept-package-agreements --accept-source-agreements --disable-interactivity
+        if ($LASTEXITCODE -ne 0) {
+            throw "winget failed to install $id (exit $LASTEXITCODE)."
+        }
+
+        Add-InstalledPackage -Id $id
+        Write-Success "$id installed"
     }
+
+    Update-SessionPath
 }
 
-# ---------------------------------------------------------------------------
-# Phase 3: Create symlinks
-# ---------------------------------------------------------------------------
+function Set-Symlink {
+    param(
+        [Parameter(Mandatory)][string]$LinkPath,
+        [Parameter(Mandatory)][string]$TargetPath,
+        [Parameter(Mandatory)][string]$Description
+    )
+
+    if (-not (Test-Path $TargetPath)) {
+        Write-Skip "$Description source missing ($TargetPath) — did the submodule init?"
+        return
+    }
+
+    $parent = Split-Path $LinkPath
+    if ($parent -and -not (Test-Path $parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+
+    if (Test-Path $LinkPath) {
+        $existing = Get-Item $LinkPath -Force
+        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $TargetPath) {
+            Write-Skip "$Description already linked"
+            return
+        }
+
+        Rename-Item $LinkPath "$LinkPath.bak" -Force
+        Write-Host "[setup] Existing $Description backed up to $LinkPath.bak"
+    }
+
+    New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath | Out-Null
+    Write-Success "$Description linked"
+}
 
 function Invoke-Symlinks {
-    Write-Phase 'Phase 3: Create symlinks'
+    Write-Phase 'Create symlinks'
 
-    # PowerShell profile stub — points $PROFILE to repo's profile.ps1
-    $profileDir  = Split-Path $PROFILE.CurrentUserAllHosts
-    $profileStub = $PROFILE.CurrentUserAllHosts
-    $profileSrc  = Join-Path $RepoRoot 'powershell/profile.ps1'
-
-    if (-not (Test-Path $profileSrc)) {
-        Write-Skip "powershell/profile.ps1 not found in repo — skipping profile stub"
-    } else {
-        if (-not (Test-Path $profileDir)) {
-            New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
-        }
-
-        if (Test-Path $profileStub) {
-            $existing = Get-Item $profileStub
-            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $profileSrc) {
-                Write-Skip 'PowerShell profile stub already set'
-            } else {
-                Rename-Item $profileStub "$profileStub.bak" -Force
-                Write-Host '[setup] Existing profile backed up to profile.ps1.bak'
-                New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
-                Write-Success 'PowerShell profile stub created'
-            }
-        } else {
-            New-Item -ItemType SymbolicLink -Path $profileStub -Target $profileSrc | Out-Null
-            Write-Success 'PowerShell profile stub created'
-        }
+    # Make sure the dotfiles submodule (which holds the Neovim config) is present.
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        git -C $RepoRoot submodule update --init --recursive | Out-Null
     }
 
-    # Neovim config — points $env:LOCALAPPDATA\nvim to submodule's nvim directory
-    $nvimLink = "$env:LOCALAPPDATA\nvim"
-    $nvimSrc  = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
+    $nvimSrc = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
+    Set-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') -TargetPath $nvimSrc -Description 'Neovim config'
 
-    if (-not (Test-Path $nvimSrc)) {
-        Write-Skip 'submodules/dotfiles/nvim not found — run submodule init first'
-    } elseif (Test-Path $nvimLink) {
-        $existing = Get-Item $nvimLink
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $nvimSrc) {
-            Write-Skip 'Neovim config symlink already set'
-        } else {
-            Rename-Item $nvimLink "$nvimLink.bak" -Force
-            Write-Host '[setup] Existing nvim config backed up to nvim.bak'
-            New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
-            Write-Success 'Neovim config symlink created'
-        }
-    } else {
-        New-Item -ItemType SymbolicLink -Path $nvimLink -Target $nvimSrc | Out-Null
-        Write-Success 'Neovim config symlink created'
-    }
-
-    # Zellij config — points %APPDATA%\Zellij\config\config.kdl to submodule's config
-    # Shared with WSL; SHELL env var controls which shell is used per platform
-    $zellijConfigDir  = "$env:APPDATA\Zellij\config"
-    $zellijConfigLink = "$zellijConfigDir\config.kdl"
-    $zellijConfigSrc  = Join-Path $RepoRoot 'submodules\dotfiles\zellij\.config\zellij\config.kdl'
-
-    if (-not (Test-Path $zellijConfigSrc)) {
-        Write-Skip 'submodules/dotfiles/zellij config not found — run submodule init first'
-    } else {
-        if (-not (Test-Path $zellijConfigDir)) {
-            New-Item -ItemType Directory -Path $zellijConfigDir -Force | Out-Null
-        }
-
-        if (Test-Path $zellijConfigLink) {
-            $existing = Get-Item $zellijConfigLink -Force
-            if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $zellijConfigSrc) {
-                Write-Skip 'Zellij config symlink already set'
-            } else {
-                Rename-Item $zellijConfigLink "$zellijConfigLink.bak" -Force
-                Write-Host '[setup] Existing zellij config backed up to config.kdl.bak'
-                New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
-                Write-Success 'Zellij config symlink created'
-            }
-        } else {
-            New-Item -ItemType SymbolicLink -Path $zellijConfigLink -Target $zellijConfigSrc | Out-Null
-            Write-Success 'Zellij config symlink created'
-        }
-    }
-
-    # Git config — points ~\.config\git to submodule's git config directory
-    $gitLink = "$env:USERPROFILE\.config\git"
-    $gitSrc  = Join-Path $RepoRoot 'submodules\dotfiles\git\.config\git'
-
-    # Remove legacy ~/.gitconfig so dotfiles config is always the source of truth
-    $legacyGitConfig = "$env:USERPROFILE\.gitconfig"
-    if (Test-Path $legacyGitConfig) {
-        Remove-Item $legacyGitConfig -Force
-        Write-Host '[setup] Removed ~/.gitconfig — dotfiles config takes over'
-    }
-
-    if (-not (Test-Path $gitSrc)) {
-        Write-Skip 'submodules/dotfiles/git not found — run submodule init first'
-    } elseif (Test-Path $gitLink) {
-        $existing = Get-Item $gitLink
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $gitSrc) {
-            Write-Skip 'Git config symlink already set'
-        } else {
-            Rename-Item $gitLink "$gitLink.bak" -Force
-            Write-Host '[setup] Existing git config backed up to git.bak'
-            New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
-            Write-Success 'Git config symlink created'
-        }
-    } else {
-        $gitLinkParent = Split-Path $gitLink
-        if (-not (Test-Path $gitLinkParent)) {
-            New-Item -ItemType Directory -Path $gitLinkParent -Force | Out-Null
-        }
-        New-Item -ItemType SymbolicLink -Path $gitLink -Target $gitSrc | Out-Null
-        Write-Success 'Git config symlink created'
-    }
-
-    # Fastfetch config — points ~/.config/fastfetch to repo's fastfetch directory
-    $fastfetchLink = "$env:USERPROFILE\.config\fastfetch"
-    $fastfetchSrc  = Join-Path $RepoRoot 'fastfetch'
-
-    if (Test-Path $fastfetchLink) {
-        $existing = Get-Item $fastfetchLink -Force
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $fastfetchSrc) {
-            Write-Skip 'Fastfetch config symlink already set'
-        } else {
-            Rename-Item $fastfetchLink "$fastfetchLink.bak" -Force
-            Write-Host '[setup] Existing fastfetch config backed up to fastfetch.bak'
-            New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
-            Write-Success 'Fastfetch config symlink created'
-        }
-    } else {
-        $fastfetchLinkParent = Split-Path $fastfetchLink
-        if (-not (Test-Path $fastfetchLinkParent)) {
-            New-Item -ItemType Directory -Path $fastfetchLinkParent -Force | Out-Null
-        }
-        New-Item -ItemType SymbolicLink -Path $fastfetchLink -Target $fastfetchSrc | Out-Null
-        Write-Success 'Fastfetch config symlink created'
-    }
+    $profileSrc = Join-Path $RepoRoot 'powershell\profile.ps1'
+    Set-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -TargetPath $profileSrc -Description 'PowerShell profile'
 }
-
-# ---------------------------------------------------------------------------
-# Phase 4: Shell config — install PS modules
-# ---------------------------------------------------------------------------
-
-function Invoke-Shell {
-    Write-Phase 'Phase 4: Shell config'
-
-    $modulesFile = Join-Path $RepoRoot 'powershell/modules.json'
-    $cfg = Get-Content $modulesFile | ConvertFrom-Json
-
-    foreach ($mod in $cfg.modules) {
-        if (Get-Module -ListAvailable -Name $mod.name) {
-            Write-Skip "$($mod.name) already installed"
-        } else {
-            Write-Host "[setup] Installing module $($mod.name)..."
-            Install-Module -Name $mod.name -Scope $mod.scope -Force -SkipPublisherCheck
-            Write-Success "$($mod.name) installed"
-        }
-    }
-
-    # Set SHELL env var so zellij uses pwsh on Windows (WSL inherits its own $SHELL from the OS)
-    $currentShell = [System.Environment]::GetEnvironmentVariable('SHELL', 'User')
-    if ($currentShell -eq 'pwsh') {
-        Write-Skip 'SHELL=pwsh already set'
-    } else {
-        [System.Environment]::SetEnvironmentVariable('SHELL', 'pwsh', 'User')
-        $env:SHELL = 'pwsh'
-        Write-Success 'SHELL=pwsh set in user environment'
-    }
-}
-
-# ---------------------------------------------------------------------------
-# Run phases
-# ---------------------------------------------------------------------------
 
 Write-Host ''
 Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Windows 11 Dotfiles — Setup      ' -ForegroundColor Cyan
+Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
 Write-Host '====================================' -ForegroundColor Cyan
 
 Invoke-ValidatePrerequisites
-
-Invoke-Submodules
-
 if ($All -or $Packages) { Invoke-Packages }
 if ($All -or $Symlinks) { Invoke-Symlinks }
-if ($All -or $Shell)    { Invoke-Shell    }
 
-Write-Host ''
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   Setup complete!                  ' -ForegroundColor Cyan
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host ''
+Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."

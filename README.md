@@ -4,76 +4,93 @@
 
 > "WhereZenZoo('味儿真足'）- your Windows 11 dev environment, seasoned just right. PowerShell meets dotfiles swagger, no more clicking 'Next' like a peasant. 100% less mouse and 100% more 良子 energy."
 
-## Quick Start
+WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs, symlinks your Neovim config, and sets up a [starship](https://starship.rs/) prompt.
 
-Fresh Windows 11 machine? One line does everything — no git required.
+## Prerequisites
 
-### Prerequisites
+- **Developer Mode enabled** — so symlinks are created without elevation. (Settings → System → For developers → Developer Mode.)
+- **winget** (App Installer) available — ships with Windows 11; otherwise install "App Installer" from the Microsoft Store.
 
-- Windows 11
-- [App Installer](https://apps.microsoft.com/detail/9nblggh4nns1) (provides `winget`) — ships by default on Windows 11, install from the Microsoft Store if missing
+## Quick start
 
-### One-liner (recommended)
-
-Open **Windows PowerShell** (Win + X → "Windows PowerShell") and run:
+Open **Windows PowerShell** and run the one-liner:
 
 ```powershell
 irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
 ```
 
-A UAC prompt will appear once to elevate. The script will then:
+It will:
 
-1. Install Git via winget
-2. Clone this repo to `~\dotfiles`
-3. Hand off to `bootstrap.ps1`, which installs PowerShell 7, `just`, and runs `setup.ps1`
+1. Ensure winget and Git are available (installing Git via winget if missing).
+2. Clone this repo (with the `dotfiles` submodule) to `~\dotfiles`.
+3. Run `bootstrap.ps1` → `setup.ps1`.
 
-### Manual steps (if you already have git)
+## Uninstall
 
-**1. Clone this repo**
-
-```powershell
-git clone https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\dotfiles
-```
-
-**2. Run bootstrap**
+One-liner to revert the setup:
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
+irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/uninstall.ps1 | iex
 ```
 
-A UAC prompt will appear once to elevate. After that, the script will:
-
-- Install PowerShell 7 (if not already installed)
-- Re-launch itself under PowerShell 7
-- Install `just` (task runner)
-- Hand off to `setup.ps1`
-
-**3. What `setup.ps1` does automatically**
-
-| Phase | What happens |
-|---|---|
-| 0 — Submodules | Initialises `submodules/dotfiles` (nvim, git config, …) |
-| 1 — Validate | Checks PowerShell 7 and `winget` are available |
-| 2 — Packages | Installs all WinGet packages (Neovim, Git, oh-my-posh, ripgrep, fd, lazygit, LLVM, …) and Meslo Nerd Font |
-| 3 — Symlinks | Creates symlinks for PowerShell profile, Neovim config, and Git config |
-| 4 — Shell | Installs PowerShell modules (Terminal-Icons, z, PSReadLine, …) |
-
-**4. After setup completes**
-
-- Close and reopen Windows Terminal
-- Set the font to **MesloLGM Nerd Font** under Windows Terminal settings → Defaults → Appearance (required for oh-my-posh icons)
-- Launch `nvim` once — LazyVim will bootstrap and install all plugins automatically
-
-### Re-running
-
-`bootstrap.ps1` and `setup.ps1` are fully idempotent — safe to re-run at any time to apply new changes or set up an additional machine.
-
-## Uninstallation
-
-To clean up everything installed by this repo, run the provided uninstall script:
+This removes the symlinks (restoring any `.bak` backups) and uninstalls **only the
+packages this setup installed**. Tools you already had are left alone. Add `-Purge`
+(when run from a clone) to also delete LazyVim runtime data and the `~\dotfiles` clone:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\uninstall.ps1
+powershell -ExecutionPolicy Bypass -File ~\dotfiles\uninstall.ps1 -Purge
 ```
 
-This removes symlinks, PowerShell modules, WinGet packages, and fonts.
+## What gets installed
+
+Everything is declared in `config/packages.json` (standard `winget export` schema):
+
+| Package | winget id | Why |
+| --- | --- | --- |
+| Git | `Git.Git` | version control + LazyVim |
+| Neovim | `Neovim.Neovim` | the editor |
+| fd | `sharkdp.fd` | LazyVim file finding |
+| ripgrep | `BurntSushi.ripgrep.MSVC` | LazyVim grep |
+| lazygit | `JesseDuffield.lazygit` | git TUI in Neovim |
+| GNU Make | `ezwinports.make` | task runner (this repo's `Makefile`) |
+| starship | `Starship.Starship` | shell prompt |
+| zig | `zig.zig` | C compiler for nvim-treesitter |
+
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked to `$PROFILE`.
+
+## Idempotency & safety
+
+- **Re-runnable.** Run the setup as often as you like — installed packages and correct
+  symlinks are skipped, so nothing is done twice.
+- **Picks up changes.** Add a package id to `config/packages.json` and re-run; only the
+  new one is installed.
+- **Never overwrites your tools.** A package already present (on PATH or known to winget)
+  is skipped. Uninstall only removes packages recorded as installed by this setup.
+- **Existing configs are preserved.** An existing `%LOCALAPPDATA%\nvim` or `$PROFILE` is
+  moved to `*.bak` before the symlink is created, and restored on uninstall.
+
+## Common commands (after bootstrap installs `make`)
+
+```powershell
+make setup       # install packages + create symlinks
+make packages    # install winget packages only
+make symlinks    # create Neovim + profile symlinks only
+make check       # validate .ps1 and .json files parse
+make uninstall   # revert setup (symlinks + packages we installed)
+```
+
+> `make` is installed by the first bootstrap, so use the install one-liner on a fresh
+> machine before reaching for `make`.
+
+## Manual install
+
+```powershell
+git clone --recurse-submodules https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\dotfiles
+powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
+```
+
+## Notes
+
+- Scripts run under Windows PowerShell 5.1 (no PowerShell 7 dependency).
+- winget shims live in `%LOCALAPPDATA%\Microsoft\WinGet\Links`; the scripts refresh the
+  current session PATH after installs, but open a fresh terminal to pick up all changes.
