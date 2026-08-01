@@ -32,6 +32,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Don't let PowerShell 7.4+ turn a benign non-zero winget exit into a
+# terminating error; we check $LASTEXITCODE ourselves.
+$PSNativeCommandUseErrorActionPreference = $false
 
 if (-not ($Symlinks -or $Packages)) {
     $All = $true

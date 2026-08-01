@@ -37,6 +37,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# winget/git return non-zero for benign cases (reboot required, no applicable
+# upgrade, etc.). Don't let PowerShell 7.4+ turn those into terminating errors —
+# we inspect $LASTEXITCODE and verify results ourselves.
+$PSNativeCommandUseErrorActionPreference = $false
 $RepoRoot = $PSScriptRoot
 
 if (-not ($Packages -or $Symlinks)) {
@@ -124,6 +128,7 @@ function Invoke-Packages {
 
     $manifest = Get-Content (Join-Path $RepoRoot 'config/packages.json') -Raw | ConvertFrom-Json
     $ids = $manifest.Sources[0].Packages.PackageIdentifier
+    $failed = @()
 
     foreach ($id in $ids) {
         if (Test-PackageInstalled -Id $id) {
@@ -134,15 +139,26 @@ function Invoke-Packages {
         Write-Host "[setup] Installing $id..."
         winget install --id $id --exact --source winget --silent `
             --accept-package-agreements --accept-source-agreements --disable-interactivity
-        if ($LASTEXITCODE -ne 0) {
-            throw "winget failed to install $id (exit $LASTEXITCODE)."
-        }
+        $code = $LASTEXITCODE
+        Update-SessionPath
 
-        Add-InstalledPackage -Id $id
-        Write-Success "$id installed"
+        # winget's exit code is unreliable (non-zero for reboot-required, etc.),
+        # so confirm by presence instead. A single bad package must never abort
+        # the run — the symlink phase still needs to happen.
+        if (Test-PackageInstalled -Id $id) {
+            Add-InstalledPackage -Id $id
+            Write-Success "$id installed"
+        } else {
+            Write-Warn "$id did not install cleanly (winget exit $code); continuing"
+            $failed += $id
+        }
     }
 
     Update-SessionPath
+
+    if ($failed) {
+        Write-Warn ("May need a manual install: {0}" -f ($failed -join ', '))
+    }
 }
 
 function Set-Symlink {

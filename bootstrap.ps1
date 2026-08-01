@@ -13,6 +13,9 @@
 #>
 
 $ErrorActionPreference = 'Stop'
+# Don't let PowerShell 7.4+ turn a benign non-zero winget/git exit into a
+# terminating error; we check $LASTEXITCODE / command presence ourselves.
+$PSNativeCommandUseErrorActionPreference = $false
 $RepoRoot = $PSScriptRoot
 
 function Update-SessionPath {
