@@ -4,63 +4,93 @@
 
 > "WhereZenZoo('味儿真足'）- your Windows 11 dev environment, seasoned just right. PowerShell meets dotfiles swagger, no more clicking 'Next' like a peasant. 100% less mouse and 100% more 良子 energy."
 
-WhereZenZoo is a small Windows 11 development-environment bootstrapper built around [Scoop](https://scoop.sh/). It avoids WinGet so newly installed command-line tools are available through Scoop shims immediately after installation.
+WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs, symlinks your Neovim config, and sets up a [starship](https://starship.rs/) prompt.
+
+## Prerequisites
+
+- **Developer Mode enabled** — so symlinks are created without elevation. (Settings → System → For developers → Developer Mode.)
+- **winget** (App Installer) available — ships with Windows 11; otherwise install "App Installer" from the Microsoft Store.
 
 ## Quick start
 
-Open **Windows PowerShell** and run:
+Open **Windows PowerShell** and run the one-liner:
 
 ```powershell
 irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
 ```
 
-The installer will:
+It will:
 
-1. Install Scoop if it is missing
-2. Install Git through Scoop if it is missing
-3. Clone this repository to `~\dotfiles`
-4. Hand off to `bootstrap.ps1`
+1. Ensure winget and Git are available (installing Git via winget if missing).
+2. Clone this repo (with the `dotfiles` submodule) to `~\dotfiles`.
+3. Run `bootstrap.ps1` → `setup.ps1`.
 
-## Manual install
+## Uninstall
+
+One-liner to revert the setup:
 
 ```powershell
-git clone https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\dotfiles
-powershell.exe -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
+irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/uninstall.ps1 | iex
+```
+
+This removes the symlinks (restoring any `.bak` backups) and uninstalls **only the
+packages this setup installed**. Tools you already had are left alone. Add `-Purge`
+(when run from a clone) to also delete LazyVim runtime data and the `~\dotfiles` clone:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ~\dotfiles\uninstall.ps1 -Purge
 ```
 
 ## What gets installed
 
-`bootstrap.ps1` ensures the core tools are present:
+Everything is declared in `config/packages.json` (standard `winget export` schema):
 
-- Scoop
-- Git
-- PowerShell 7 (`pwsh`)
-- `just`
+| Package | winget id | Why |
+| --- | --- | --- |
+| Git | `Git.Git` | version control + LazyVim |
+| Neovim | `Neovim.Neovim` | the editor |
+| fd | `sharkdp.fd` | LazyVim file finding |
+| ripgrep | `BurntSushi.ripgrep.MSVC` | LazyVim grep |
+| lazygit | `JesseDuffield.lazygit` | git TUI in Neovim |
+| GNU Make | `ezwinports.make` | task runner (this repo's `Makefile`) |
+| starship | `Starship.Starship` | shell prompt |
+| zig | `zig.zig` | C compiler for nvim-treesitter |
 
-`setup.ps1` then installs everything declared in `config/scoop.json`, links the PowerShell profile and fastfetch config, and installs PowerShell modules from `powershell/modules.json`.
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked to `$PROFILE`.
 
-## Common commands
+## Idempotency & safety
+
+- **Re-runnable.** Run the setup as often as you like — installed packages and correct
+  symlinks are skipped, so nothing is done twice.
+- **Picks up changes.** Add a package id to `config/packages.json` and re-run; only the
+  new one is installed.
+- **Never overwrites your tools.** A package already present (on PATH or known to winget)
+  is skipped. Uninstall only removes packages recorded as installed by this setup.
+- **Existing configs are preserved.** An existing `%LOCALAPPDATA%\nvim` or `$PROFILE` is
+  moved to `*.bak` before the symlink is created, and restored on uninstall.
+
+## Common commands (after bootstrap installs `make`)
 
 ```powershell
-# Run the full setup
-pwsh -ExecutionPolicy Bypass -File .\setup.ps1
-
-# Only install Scoop packages
-pwsh -ExecutionPolicy Bypass -File .\setup.ps1 -Packages
-
-# Only refresh symlinks
-pwsh -ExecutionPolicy Bypass -File .\setup.ps1 -Symlinks
-
-# Remove symlinks, modules, and Scoop packages installed by this repo
-pwsh -ExecutionPolicy Bypass -File .\uninstall.ps1
+make setup       # install packages + create symlinks
+make packages    # install winget packages only
+make symlinks    # create Neovim + profile symlinks only
+make check       # validate .ps1 and .json files parse
+make uninstall   # revert setup (symlinks + packages we installed)
 ```
 
-## Package configuration
+> `make` is installed by the first bootstrap, so use the install one-liner on a fresh
+> machine before reaching for `make`.
 
-Edit `config/scoop.json` to add or remove Scoop buckets and packages. Re-run `setup.ps1 -Packages` after changing it.
+## Manual install
+
+```powershell
+git clone --recurse-submodules https://github.com/user3301/WhereZenZoo.git $env:USERPROFILE\dotfiles
+powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
+```
 
 ## Notes
 
-- Do not run Scoop as Administrator; it is designed for per-user installs.
-- Scoop shims live in `~\scoop\shims`; the scripts refresh the current session PATH after installs.
-- Close and reopen Windows Terminal after setup so all environment changes are loaded by new shells.
+- Scripts run under Windows PowerShell 5.1 (no PowerShell 7 dependency).
+- winget shims live in `%LOCALAPPDATA%\Microsoft\WinGet\Links`; the scripts refresh the
+  current session PATH after installs, but open a fresh terminal to pick up all changes.

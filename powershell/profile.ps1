@@ -1,20 +1,14 @@
+# WhereZenZoo PowerShell profile — minimal, git + Neovim focused.
+
 $ErrorActionPreference = 'Continue'
 
-$repoProfileDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$promptTheme = Join-Path $repoProfileDir 'theme.omp.json'
-
-if (Get-Command oh-my-posh -ErrorAction SilentlyContinue) {
-    oh-my-posh init pwsh --config $promptTheme | Invoke-Expression
+# Prompt: starship (installed via config/packages.json).
+if (Get-Command starship -ErrorAction SilentlyContinue) {
+    Invoke-Expression (& starship init powershell)
 }
 
-if (Get-Module -ListAvailable -Name Terminal-Icons) {
-    Import-Module Terminal-Icons
-}
-
-if (Get-Module -ListAvailable -Name z) {
-    Import-Module z
-}
-
+# Sensible line-editing defaults (PSReadLine ships with PowerShell).
 Set-PSReadLineOption -EditMode Windows -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+
 Set-Alias vim nvim -ErrorAction SilentlyContinue
 Set-Alias ll Get-ChildItem -ErrorAction SilentlyContinue

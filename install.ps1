@@ -1,79 +1,59 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Remote installer for WhereZenZoo.
+    Remote installer for WhereZenZoo (winget-based).
 .DESCRIPTION
-    Installs Scoop and Git if needed, clones the repository, then runs bootstrap.ps1.
+    Ensures winget and Git are available, clones this repository (with the dotfiles
+    submodule) to ~\dotfiles, then hands off to bootstrap.ps1. Safe to re-run: an
+    existing clone is fast-forwarded instead of re-cloned.
 .EXAMPLE
     irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
 
-    Downloads and runs the installer on a fresh Windows user profile.
+    Downloads and runs the installer.
 .NOTES
-    Run from a non-administrator Windows PowerShell session. Scoop installs tools per-user and should not be run elevated.
+    Prerequisites: Developer Mode enabled (for unprivileged symlinks) and winget
+    (App Installer). Run from Windows PowerShell.
 #>
 
 $ErrorActionPreference = 'Stop'
 
-$RepoUrl = 'https://github.com/user3301/WhereZenZoo.git'
-$InstallUrl = 'https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1'
+$RepoUrl  = 'https://github.com/user3301/WhereZenZoo.git'
 $CloneDir = Join-Path $env:USERPROFILE 'dotfiles'
 
-function Add-ScoopToPath {
-    $paths = @(
-        (Join-Path $env:USERPROFILE 'scoop\shims'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\git\current\cmd')
-    ) | Where-Object { Test-Path $_ }
-
-    foreach ($path in $paths) {
-        if (($env:PATH -split ';') -notcontains $path) {
-            $env:PATH = "$path;$env:PATH"
-        }
-    }
-}
-
-function Install-ScoopIfMissing {
-    if (Get-Command scoop -ErrorAction SilentlyContinue) {
-        Write-Host '[install] Scoop already available.'
-        return
-    }
-
-    Write-Host '[install] Installing Scoop...'
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-    Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-    Add-ScoopToPath
-
-    if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-        throw 'Scoop installation completed, but scoop is not on PATH. Open a new terminal and re-run the installer.'
-    }
+function Update-SessionPath {
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    $parts   = @($machine, $user, $links) | Where-Object { $_ }
+    $env:PATH = ($parts -join ';')
 }
 
 Write-Host "[install] Running under PowerShell $($PSVersionTable.PSVersion)"
 
-if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Do not run this installer as Administrator. Scoop is a per-user package manager.'
-}
-
-Install-ScoopIfMissing
-Add-ScoopToPath
-
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host '[install] Installing Git with Scoop...'
-    scoop install git
-    Add-ScoopToPath
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw 'winget is not available. Install "App Installer" from the Microsoft Store, then re-run.'
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw 'Git was installed but is not available on PATH. Open a new terminal and re-run the installer.'
+    Write-Host '[install] Installing Git with winget...'
+    winget install --id Git.Git --exact --source winget --silent `
+        --accept-package-agreements --accept-source-agreements --disable-interactivity
+    Update-SessionPath
+}
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw 'Git was installed but is not on PATH yet. Open a new terminal and re-run the installer.'
 }
 
 if (Test-Path (Join-Path $CloneDir '.git')) {
     Write-Host "[install] Updating existing clone at $CloneDir..."
     git -C $CloneDir pull --ff-only
+    git -C $CloneDir submodule update --init --recursive
 } elseif (Test-Path $CloneDir) {
     throw "'$CloneDir' already exists but is not a git repository. Move it aside and re-run."
 } else {
     Write-Host "[install] Cloning WhereZenZoo to $CloneDir..."
-    git clone $RepoUrl $CloneDir
+    git clone --recurse-submodules $RepoUrl $CloneDir
 }
 
 $bootstrap = Join-Path $CloneDir 'bootstrap.ps1'

@@ -1,105 +1,147 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Main WhereZenZoo setup orchestrator.
+    Main WhereZenZoo setup orchestrator (winget-based).
 .DESCRIPTION
-    Installs Scoop packages, creates symlinks, and installs PowerShell modules.
+    Installs the winget packages declared in config/packages.json and creates the
+    dotfile symlinks (Neovim config from the dotfiles submodule, PowerShell profile).
+
+    The run is idempotent: packages that are already installed are skipped, and
+    symlinks that already point at the right target are left alone. Packages this
+    script installs are recorded in a per-user state file so uninstall.ps1 can
+    revert only what was actually installed here.
 .PARAMETER All
-    Runs every setup phase. This is the default when no phase flags are supplied.
+    Runs every phase. This is the default when no phase flag is supplied.
 .PARAMETER Packages
-    Installs buckets and packages listed in config/scoop.json.
+    Installs the winget packages listed in config/packages.json.
 .PARAMETER Symlinks
-    Creates user-profile symlinks for the PowerShell profile and fastfetch config.
-.PARAMETER Shell
-    Installs PowerShell modules listed in powershell/modules.json.
+    Creates the Neovim config and PowerShell profile symlinks.
 .EXAMPLE
-    pwsh -ExecutionPolicy Bypass -File .\setup.ps1
+    powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1
 
     Runs the full setup.
 .EXAMPLE
-    pwsh -ExecutionPolicy Bypass -File .\setup.ps1 -Packages
+    powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1 -Packages
 
-    Installs or refreshes only Scoop packages.
+    Installs or refreshes only the winget packages.
 .NOTES
-    Run bootstrap.ps1 first on a fresh machine so Scoop and PowerShell 7 are available.
+    Requires Developer Mode so symlinks can be created without elevation, and
+    winget (App Installer). Run bootstrap.ps1 / install.ps1 on a fresh machine.
 #>
 
 [CmdletBinding()]
 param(
     [switch]$All,
     [switch]$Packages,
-    [switch]$Symlinks,
-    [switch]$Shell
+    [switch]$Symlinks
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = $PSScriptRoot
 
-if (-not ($Packages -or $Symlinks -or $Shell)) {
+if (-not ($Packages -or $Symlinks)) {
     $All = $true
 }
 
-function Write-Phase { param([string]$Name) Write-Host "`n===> $Name" -ForegroundColor Cyan }
+# Maps each winget package id to the command it provides, so an install that was
+# made outside winget's knowledge (e.g. portable git on PATH) is still respected.
+$PackageCommands = @{
+    'Git.Git'                 = 'git'
+    'Neovim.Neovim'           = 'nvim'
+    'sharkdp.fd'              = 'fd'
+    'BurntSushi.ripgrep.MSVC' = 'rg'
+    'JesseDuffield.lazygit'   = 'lazygit'
+    'ezwinports.make'         = 'make'
+    'Starship.Starship'       = 'starship'
+    'zig.zig'                 = 'zig'
+}
+
+function Write-Phase   { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
 function Write-Success { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
-function Write-Skip { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
+function Write-Skip    { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
+function Write-Warn    { param([string]$Message) Write-Host "[warn] $Message" -ForegroundColor Yellow }
 
-function Add-ScoopToPath {
-    $paths = @(
-        (Join-Path $env:USERPROFILE 'scoop\shims'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\git\current\cmd'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\pwsh\current')
-    ) | Where-Object { Test-Path $_ }
+function Update-SessionPath {
+    # Rebuild the current session PATH so tools installed during this run are
+    # visible without reopening the terminal. WinGet drops shims into Links.
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    $parts   = @($machine, $user, $links) | Where-Object { $_ }
+    $env:PATH = ($parts -join ';')
+}
 
-    foreach ($path in $paths) {
-        if (($env:PATH -split ';') -notcontains $path) {
-            $env:PATH = "$path;$env:PATH"
-        }
+function Get-StatePath {
+    return (Join-Path (Join-Path $env:LOCALAPPDATA 'WhereZenZoo') 'installed.json')
+}
+
+function Add-InstalledPackage {
+    param([Parameter(Mandatory)][string]$Id)
+
+    $path = Get-StatePath
+    $dir  = Split-Path $path
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+    $ids = @()
+    if (Test-Path $path) {
+        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json) } catch { $ids = @() }
     }
+    if ($ids -notcontains $Id) {
+        $ids += $Id
+        ConvertTo-Json -InputObject $ids | Set-Content -Path $path -Encoding UTF8
+    }
+}
+
+function Test-PackageInstalled {
+    param([Parameter(Mandatory)][string]$Id)
+
+    # Fast path: the command it provides is already on PATH.
+    $cmd = $PackageCommands[$Id]
+    if ($cmd -and (Get-Command $cmd -ErrorAction SilentlyContinue)) { return $true }
+
+    # Otherwise ask winget whether the exact id is installed (covers ARP entries).
+    winget list --id $Id --exact --accept-source-agreements 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
 }
 
 function Invoke-ValidatePrerequisites {
     Write-Phase 'Validate prerequisites'
 
-    if ($PSVersionTable.PSVersion.Major -lt 7) {
-        throw 'PowerShell 7 or higher is required. Run bootstrap.ps1 first.'
+    if ($PSVersionTable.PSVersion.Major -lt 5) {
+        throw 'Windows PowerShell 5.1 or higher is required.'
     }
     Write-Success "PowerShell $($PSVersionTable.PSVersion)"
 
-    Add-ScoopToPath
-    if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
-        throw 'Scoop is required. Run install.ps1 or bootstrap.ps1 first.'
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        throw 'winget is not available. Install "App Installer" from the Microsoft Store, then re-run.'
     }
-    Write-Success 'Scoop available'
+    Write-Success 'winget available'
 }
 
 function Invoke-Packages {
-    Write-Phase 'Install Scoop packages'
+    Write-Phase 'Install winget packages'
 
-    $config = Get-Content (Join-Path $RepoRoot 'config/scoop.json') -Raw | ConvertFrom-Json
+    $manifest = Get-Content (Join-Path $RepoRoot 'config/packages.json') -Raw | ConvertFrom-Json
+    $ids = $manifest.Sources[0].Packages.PackageIdentifier
 
-    foreach ($bucket in $config.buckets) {
-        $existingBuckets = scoop bucket list 2>$null
-        if ($existingBuckets -match "(^|\s)$([regex]::Escape($bucket))(\s|$)") {
-            Write-Skip "Bucket $bucket already added"
-        } else {
-            Write-Host "[setup] Adding Scoop bucket $bucket..."
-            scoop bucket add $bucket
-            Write-Success "Bucket $bucket added"
+    foreach ($id in $ids) {
+        if (Test-PackageInstalled -Id $id) {
+            Write-Skip "$id already installed"
+            continue
         }
+
+        Write-Host "[setup] Installing $id..."
+        winget install --id $id --exact --source winget --silent `
+            --accept-package-agreements --accept-source-agreements --disable-interactivity
+        if ($LASTEXITCODE -ne 0) {
+            throw "winget failed to install $id (exit $LASTEXITCODE)."
+        }
+
+        Add-InstalledPackage -Id $id
+        Write-Success "$id installed"
     }
 
-    foreach ($package in $config.packages) {
-        $installed = scoop list 2>$null | Select-String -Pattern "^$([regex]::Escape($package))\s"
-        if ($installed) {
-            Write-Skip "$package already installed"
-        } else {
-            Write-Host "[setup] Installing $package..."
-            scoop install $package
-            Write-Success "$package installed"
-        }
-    }
-
-    Add-ScoopToPath
+    Update-SessionPath
 }
 
 function Set-Symlink {
@@ -109,8 +151,13 @@ function Set-Symlink {
         [Parameter(Mandatory)][string]$Description
     )
 
+    if (-not (Test-Path $TargetPath)) {
+        Write-Skip "$Description source missing ($TargetPath) — did the submodule init?"
+        return
+    }
+
     $parent = Split-Path $LinkPath
-    if (-not (Test-Path $parent)) {
+    if ($parent -and -not (Test-Path $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
 
@@ -132,33 +179,25 @@ function Set-Symlink {
 function Invoke-Symlinks {
     Write-Phase 'Create symlinks'
 
-    Set-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -TargetPath (Join-Path $RepoRoot 'powershell/profile.ps1') -Description 'PowerShell profile'
-    Set-Symlink -LinkPath (Join-Path $env:USERPROFILE '.config\fastfetch') -TargetPath (Join-Path $RepoRoot 'fastfetch') -Description 'fastfetch config'
-}
-
-function Invoke-Shell {
-    Write-Phase 'Install PowerShell modules'
-
-    $config = Get-Content (Join-Path $RepoRoot 'powershell/modules.json') -Raw | ConvertFrom-Json
-    foreach ($module in $config.modules) {
-        if (Get-Module -ListAvailable -Name $module.name) {
-            Write-Skip "$($module.name) already installed"
-        } else {
-            Write-Host "[setup] Installing module $($module.name)..."
-            Install-Module -Name $module.name -Scope $module.scope -Force -SkipPublisherCheck
-            Write-Success "$($module.name) installed"
-        }
+    # Make sure the dotfiles submodule (which holds the Neovim config) is present.
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        git -C $RepoRoot submodule update --init --recursive | Out-Null
     }
+
+    $nvimSrc = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
+    Set-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') -TargetPath $nvimSrc -Description 'Neovim config'
+
+    $profileSrc = Join-Path $RepoRoot 'powershell\profile.ps1'
+    Set-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -TargetPath $profileSrc -Description 'PowerShell profile'
 }
 
 Write-Host ''
 Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   WhereZenZoo — Scoop Setup        ' -ForegroundColor Cyan
+Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
 Write-Host '====================================' -ForegroundColor Cyan
 
 Invoke-ValidatePrerequisites
 if ($All -or $Packages) { Invoke-Packages }
 if ($All -or $Symlinks) { Invoke-Symlinks }
-if ($All -or $Shell) { Invoke-Shell }
 
 Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."

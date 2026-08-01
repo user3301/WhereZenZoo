@@ -1,87 +1,49 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Bootstraps the Scoop-based WhereZenZoo setup.
+    Bootstraps the WhereZenZoo setup from a local clone.
 .DESCRIPTION
-    Ensures Scoop, Git, PowerShell 7, and just are installed, then runs setup.ps1 under pwsh.
+    Ensures winget and Git are present, initialises the dotfiles submodule, then
+    runs setup.ps1. Use this after cloning the repo manually; install.ps1 calls it
+    for you on a fresh machine.
 .EXAMPLE
     powershell.exe -ExecutionPolicy Bypass -File .\bootstrap.ps1
-
-    Installs the core Scoop-managed bootstrap tools and starts setup.ps1.
 .NOTES
-    This script has no parameters. Run from a non-administrator PowerShell session because Scoop is a per-user package manager.
+    This script has no parameters. Requires Developer Mode (for symlinks) and winget.
 #>
 
 $ErrorActionPreference = 'Stop'
+$RepoRoot = $PSScriptRoot
 
-function Add-ScoopToPath {
-    $paths = @(
-        (Join-Path $env:USERPROFILE 'scoop\shims'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\git\current\cmd'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\pwsh\current')
-    ) | Where-Object { Test-Path $_ }
-
-    foreach ($path in $paths) {
-        if (($env:PATH -split ';') -notcontains $path) {
-            $env:PATH = "$path;$env:PATH"
-        }
-    }
-}
-
-function Install-ScoopIfMissing {
-    if (Get-Command scoop -ErrorAction SilentlyContinue) {
-        Write-Host '[bootstrap] Scoop already available.'
-        return
-    }
-
-    Write-Host '[bootstrap] Installing Scoop...'
-    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
-    Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
-    Add-ScoopToPath
-}
-
-function Install-ScoopPackage {
-    param([Parameter(Mandatory)][string]$Name)
-
-    $installed = scoop list 2>$null | Select-String -Pattern "^$([regex]::Escape($Name))\s"
-    if ($installed) {
-        Write-Host "[bootstrap] $Name already installed."
-        return
-    }
-
-    Write-Host "[bootstrap] Installing $Name..."
-    scoop install $Name
-}
-
-function Find-Pwsh {
-    $cmd = Get-Command pwsh -ErrorAction SilentlyContinue
-    if ($cmd) { return $cmd.Source }
-
-    $scoopPwsh = Join-Path $env:USERPROFILE 'scoop\apps\pwsh\current\pwsh.exe'
-    if (Test-Path $scoopPwsh) { return $scoopPwsh }
-
-    return $null
-}
-
-if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Do not run bootstrap.ps1 as Administrator. Scoop is a per-user package manager.'
+function Update-SessionPath {
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    $parts   = @($machine, $user, $links) | Where-Object { $_ }
+    $env:PATH = ($parts -join ';')
 }
 
 Write-Host '[bootstrap] Starting WhereZenZoo bootstrap...'
-Install-ScoopIfMissing
-Add-ScoopToPath
 
-foreach ($package in @('git', 'pwsh', 'just')) {
-    Install-ScoopPackage -Name $package
-    Add-ScoopToPath
+if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+    throw 'winget is not available. Install "App Installer" from the Microsoft Store, then re-run.'
 }
 
-$pwsh = Find-Pwsh
-if (-not $pwsh) {
-    throw 'PowerShell 7 was installed but pwsh.exe could not be found.'
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host '[bootstrap] Installing Git with winget...'
+    winget install --id Git.Git --exact --source winget --silent `
+        --accept-package-agreements --accept-source-agreements --disable-interactivity
+    Update-SessionPath
 }
 
-$setup = Join-Path $PSScriptRoot 'setup.ps1'
-Write-Host "[bootstrap] Running setup with $pwsh..."
-& $pwsh -ExecutionPolicy Bypass -File $setup
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw 'Git was installed but is not on PATH yet. Open a new terminal and re-run bootstrap.ps1.'
+}
+
+Write-Host '[bootstrap] Updating dotfiles submodule...'
+git -C $RepoRoot submodule update --init --recursive
+
+$setup = Join-Path $RepoRoot 'setup.ps1'
+Write-Host '[bootstrap] Running setup.ps1...'
+& powershell.exe -ExecutionPolicy Bypass -File $setup
 exit $LASTEXITCODE
