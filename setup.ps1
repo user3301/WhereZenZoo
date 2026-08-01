@@ -38,7 +38,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # winget/git return non-zero for benign cases (reboot required, no applicable
-# upgrade, etc.). Don't let PowerShell 7.4+ turn those into terminating errors —
+# upgrade, etc.). Don't let PowerShell 7.4+ turn those into terminating errors -
 # we inspect $LASTEXITCODE and verify results ourselves.
 $PSNativeCommandUseErrorActionPreference = $false
 $RepoRoot = $PSScriptRoot
@@ -165,7 +165,7 @@ function Invoke-Packages {
 
         # winget's exit code is unreliable (non-zero for reboot-required, etc.),
         # so confirm by presence instead. A single bad package must never abort
-        # the run — the symlink phase still needs to happen.
+        # the run - the symlink phase still needs to happen.
         if (Test-PackageInstalled -Id $id) {
             Add-InstalledPackage -Id $id
             Write-Success "$id installed"
@@ -215,7 +215,7 @@ function Set-Symlink {
     )
 
     if (-not (Test-Path $TargetPath)) {
-        Write-Skip "$Description source missing ($TargetPath) — did the submodule init?"
+        Write-Skip "$Description source missing ($TargetPath) - did the submodule init?"
         return
     }
 
@@ -298,7 +298,7 @@ catch { Write-Warn "Could not start logging ($_); continuing without a log file.
 try {
     Write-Host ''
     Write-Host '====================================' -ForegroundColor Cyan
-    Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
+    Write-Host '   WhereZenZoo - Setup (winget)     ' -ForegroundColor Cyan
     Write-Host '====================================' -ForegroundColor Cyan
 
     Invoke-ValidatePrerequisites
@@ -306,7 +306,7 @@ try {
     if ($All -or $Symlinks) { Invoke-Symlinks }
 
     if ($script:PackageFailures.Count -gt 0) {
-        Write-Host "`nSetup finished with errors — these packages did not install: $($script:PackageFailures -join ', ')." -ForegroundColor Red
+        Write-Host "`nSetup finished with errors - these packages did not install: $($script:PackageFailures -join ', ')." -ForegroundColor Red
         Write-Host 'Fix the cause and re-run; setup is idempotent and will skip what already succeeded.' -ForegroundColor Red
     } else {
         Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes." -ForegroundColor Green
