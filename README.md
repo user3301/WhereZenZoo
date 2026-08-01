@@ -48,6 +48,7 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | Package | winget id | Why |
 | --- | --- | --- |
 | Git | `Git.Git` | version control + LazyVim |
+| PowerShell 7 | `Microsoft.PowerShell` | daily shell (`pwsh`) |
 | Neovim | `Neovim.Neovim` | the editor |
 | fd | `sharkdp.fd` | LazyVim file finding |
 | ripgrep | `BurntSushi.ripgrep.MSVC` | LazyVim grep |
@@ -56,7 +57,7 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | starship | `Starship.Starship` | shell prompt |
 | zig | `zig.zig` | C compiler for nvim-treesitter |
 
-Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked to `$PROFILE`.
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked into **both** the PowerShell 7 and Windows PowerShell `$PROFILE` locations, so starship + aliases load whichever shell you use.
 
 ## Idempotency & safety
 
@@ -91,6 +92,8 @@ powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
 
 ## Notes
 
-- Scripts run under Windows PowerShell 5.1 (no PowerShell 7 dependency).
+- The bootstrap runs under Windows PowerShell 5.1 (so it works before PowerShell 7 is
+  installed); PowerShell 7 is then installed as a package and the profile is linked for
+  both shells.
 - winget shims live in `%LOCALAPPDATA%\Microsoft\WinGet\Links`; the scripts refresh the
   current session PATH after installs, but open a fresh terminal to pick up all changes.

@@ -5,6 +5,7 @@
     {
       "Packages": [
         { "PackageIdentifier": "Git.Git" },
+        { "PackageIdentifier": "Microsoft.PowerShell" },
         { "PackageIdentifier": "Neovim.Neovim" },
         { "PackageIdentifier": "sharkdp.fd" },
         { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
