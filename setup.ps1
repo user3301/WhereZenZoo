@@ -37,6 +37,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# winget/git return non-zero for benign cases (reboot required, no applicable
+# upgrade, etc.). Don't let PowerShell 7.4+ turn those into terminating errors —
+# we inspect $LASTEXITCODE and verify results ourselves.
+$PSNativeCommandUseErrorActionPreference = $false
 $RepoRoot = $PSScriptRoot
 
 if (-not ($Packages -or $Symlinks)) {
@@ -54,8 +58,21 @@ $PackageCommands = @{
     'JesseDuffield.lazygit'   = 'lazygit'
     'ezwinports.make'         = 'make'
     'Starship.Starship'       = 'starship'
-    'zig.zig'                 = 'zig'
 }
+
+# Per-package winget install overrides. Some packages need extra installer args
+# that the generic --silent install can't express. Build Tools must be told to
+# add the C++ (VCTools) workload + a Windows SDK, otherwise only the installer
+# shell is placed and nvim-treesitter still can't find cl.exe.
+$InstallOverrides = @{
+    'Microsoft.VisualStudio.2022.BuildTools' =
+        '--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'
+}
+
+# Packages that genuinely failed to install this run. The setup keeps going so a
+# single bad package doesn't skip later phases, but a non-empty list makes the
+# script exit non-zero so the failure is visible and you can fix it and re-run.
+$script:PackageFailures = @()
 
 function Write-Phase   { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
 function Write-Success { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
@@ -79,13 +96,14 @@ function Get-StatePath {
 function Add-InstalledPackage {
     param([Parameter(Mandatory)][string]$Id)
 
+    $Id = $Id.Trim()
     $path = Get-StatePath
     $dir  = Split-Path $path
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
     $ids = @()
     if (Test-Path $path) {
-        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json) } catch { $ids = @() }
+        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Unique) } catch { $ids = @() }
     }
     if ($ids -notcontains $Id) {
         $ids += $Id
@@ -132,17 +150,36 @@ function Invoke-Packages {
         }
 
         Write-Host "[setup] Installing $id..."
-        winget install --id $id --exact --source winget --silent `
-            --accept-package-agreements --accept-source-agreements --disable-interactivity
-        if ($LASTEXITCODE -ne 0) {
-            throw "winget failed to install $id (exit $LASTEXITCODE)."
+        $wingetArgs = @(
+            'install', '--id', $id, '--exact', '--source', 'winget',
+            '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
+        )
+        if ($InstallOverrides.ContainsKey($id)) {
+            $wingetArgs += @('--override', $InstallOverrides[$id])
+        } else {
+            $wingetArgs += '--silent'
         }
+        winget @wingetArgs
+        $code = $LASTEXITCODE
+        Update-SessionPath
 
-        Add-InstalledPackage -Id $id
-        Write-Success "$id installed"
+        # winget's exit code is unreliable (non-zero for reboot-required, etc.),
+        # so confirm by presence instead. A single bad package must never abort
+        # the run — the symlink phase still needs to happen.
+        if (Test-PackageInstalled -Id $id) {
+            Add-InstalledPackage -Id $id
+            Write-Success "$id installed"
+        } else {
+            Write-Warn "$id did not install cleanly (winget exit $code); continuing"
+            $script:PackageFailures += $id
+        }
     }
 
     Update-SessionPath
+
+    if ($script:PackageFailures) {
+        Write-Warn ("May need a manual install: {0}" -f ($script:PackageFailures -join ', '))
+    }
 }
 
 function Set-Symlink {
@@ -221,13 +258,36 @@ function Invoke-Symlinks {
     }
 }
 
-Write-Host ''
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
-Write-Host '====================================' -ForegroundColor Cyan
+# Log the whole run to a file so failures are diagnosable even if the window closes.
+$logDir = Join-Path $env:LOCALAPPDATA 'WhereZenZoo'
+if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+$logFile = Join-Path $logDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
+$transcribing = $false
+try { Start-Transcript -Path $logFile -Force | Out-Null; $transcribing = $true }
+catch { Write-Warn "Could not start logging ($_); continuing without a log file." }
 
-Invoke-ValidatePrerequisites
-if ($All -or $Packages) { Invoke-Packages }
-if ($All -or $Symlinks) { Invoke-Symlinks }
+try {
+    Write-Host ''
+    Write-Host '====================================' -ForegroundColor Cyan
+    Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
+    Write-Host '====================================' -ForegroundColor Cyan
 
-Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."
+    Invoke-ValidatePrerequisites
+    if ($All -or $Packages) { Invoke-Packages }
+    if ($All -or $Symlinks) { Invoke-Symlinks }
+
+    if ($script:PackageFailures.Count -gt 0) {
+        Write-Host "`nSetup finished with errors — these packages did not install: $($script:PackageFailures -join ', ')." -ForegroundColor Red
+        Write-Host 'Fix the cause and re-run; setup is idempotent and will skip what already succeeded.' -ForegroundColor Red
+    } else {
+        Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes." -ForegroundColor Green
+    }
+} finally {
+    if ($transcribing) {
+        try { Stop-Transcript | Out-Null } catch { }
+        Write-Host "Log saved to $logFile"
+    }
+}
+
+# Exit non-zero on a real failure so it's visible to callers (make, wrappers).
+if ($script:PackageFailures.Count -gt 0) { exit 1 }
