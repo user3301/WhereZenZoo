@@ -47,6 +47,7 @@ if (-not ($Packages -or $Symlinks)) {
 # made outside winget's knowledge (e.g. portable git on PATH) is still respected.
 $PackageCommands = @{
     'Git.Git'                 = 'git'
+    'Microsoft.PowerShell'    = 'pwsh'
     'Neovim.Neovim'           = 'nvim'
     'sharkdp.fd'              = 'fd'
     'BurntSushi.ripgrep.MSVC' = 'rg'
@@ -176,6 +177,26 @@ function Set-Symlink {
     Write-Success "$Description linked"
 }
 
+function Get-ProfilePath {
+    # All-hosts CurrentUser profile path for each installed PowerShell edition, so
+    # the profile loads in both PowerShell 7 (pwsh) and Windows PowerShell. Each
+    # path is queried from the shell itself so OneDrive Documents redirection is
+    # resolved correctly.
+    $paths = New-Object System.Collections.Generic.List[string]
+    $paths.Add($PROFILE.CurrentUserAllHosts)
+
+    $other = if ($PSVersionTable.PSEdition -eq 'Core') { 'powershell.exe' } else { 'pwsh' }
+    $cmd = Get-Command $other -ErrorAction SilentlyContinue
+    if ($cmd) {
+        try {
+            $p = & $cmd.Source -NoProfile -Command '$PROFILE.CurrentUserAllHosts' 2>$null
+            if ($p) { $paths.Add(($p | Select-Object -First 1).Trim()) }
+        } catch { }
+    }
+
+    return ($paths | Where-Object { $_ } | Select-Object -Unique)
+}
+
 function Invoke-Symlinks {
     Write-Phase 'Create symlinks'
 
@@ -188,7 +209,10 @@ function Invoke-Symlinks {
     Set-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') -TargetPath $nvimSrc -Description 'Neovim config'
 
     $profileSrc = Join-Path $RepoRoot 'powershell\profile.ps1'
-    Set-Symlink -LinkPath $PROFILE.CurrentUserAllHosts -TargetPath $profileSrc -Description 'PowerShell profile'
+    foreach ($profilePath in (Get-ProfilePath)) {
+        $edition = if ($profilePath -like '*\PowerShell\*') { 'PowerShell 7' } else { 'Windows PowerShell' }
+        Set-Symlink -LinkPath $profilePath -TargetPath $profileSrc -Description "$edition profile"
+    }
 }
 
 Write-Host ''
