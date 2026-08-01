@@ -58,7 +58,15 @@ $PackageCommands = @{
     'JesseDuffield.lazygit'   = 'lazygit'
     'ezwinports.make'         = 'make'
     'Starship.Starship'       = 'starship'
-    'zig.zig'                 = 'zig'
+}
+
+# Per-package winget install overrides. Some packages need extra installer args
+# that the generic --silent install can't express. Build Tools must be told to
+# add the C++ (VCTools) workload + a Windows SDK, otherwise only the installer
+# shell is placed and nvim-treesitter still can't find cl.exe.
+$InstallOverrides = @{
+    'Microsoft.VisualStudio.2022.BuildTools' =
+        '--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'
 }
 
 function Write-Phase   { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
@@ -137,8 +145,16 @@ function Invoke-Packages {
         }
 
         Write-Host "[setup] Installing $id..."
-        winget install --id $id --exact --source winget --silent `
-            --accept-package-agreements --accept-source-agreements --disable-interactivity
+        $wingetArgs = @(
+            'install', '--id', $id, '--exact', '--source', 'winget',
+            '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
+        )
+        if ($InstallOverrides.ContainsKey($id)) {
+            $wingetArgs += @('--override', $InstallOverrides[$id])
+        } else {
+            $wingetArgs += '--silent'
+        }
+        winget @wingetArgs
         $code = $LASTEXITCODE
         Update-SessionPath
 
@@ -237,13 +253,24 @@ function Invoke-Symlinks {
     }
 }
 
-Write-Host ''
-Write-Host '====================================' -ForegroundColor Cyan
-Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
-Write-Host '====================================' -ForegroundColor Cyan
+# Log the whole run to a file so failures are diagnosable even if the window closes.
+$logDir = Join-Path $env:LOCALAPPDATA 'WhereZenZoo'
+if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
+$logFile = Join-Path $logDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
+try { Start-Transcript -Path $logFile -Force | Out-Null } catch { }
 
-Invoke-ValidatePrerequisites
-if ($All -or $Packages) { Invoke-Packages }
-if ($All -or $Symlinks) { Invoke-Symlinks }
+try {
+    Write-Host ''
+    Write-Host '====================================' -ForegroundColor Cyan
+    Write-Host '   WhereZenZoo — Setup (winget)     ' -ForegroundColor Cyan
+    Write-Host '====================================' -ForegroundColor Cyan
 
-Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."
+    Invoke-ValidatePrerequisites
+    if ($All -or $Packages) { Invoke-Packages }
+    if ($All -or $Symlinks) { Invoke-Symlinks }
+
+    Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."
+} finally {
+    try { Stop-Transcript | Out-Null } catch { }
+    Write-Host "Log saved to $logFile"
+}

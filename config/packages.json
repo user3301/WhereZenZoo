@@ -12,7 +12,7 @@
         { "PackageIdentifier": "JesseDuffield.lazygit" },
         { "PackageIdentifier": "ezwinports.make" },
         { "PackageIdentifier": "Starship.Starship" },
-        { "PackageIdentifier": "zig.zig" }
+        { "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools" }
       ],
       "SourceDetails": {
         "Argument": "https://cdn.winget.microsoft.com/cache",

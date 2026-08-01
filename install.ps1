@@ -62,4 +62,12 @@ if (Test-Path (Join-Path $CloneDir '.git')) {
 $bootstrap = Join-Path $CloneDir 'bootstrap.ps1'
 Write-Host '[install] Handing off to bootstrap.ps1...'
 & powershell.exe -ExecutionPolicy Bypass -File $bootstrap
-exit $LASTEXITCODE
+$code = $LASTEXITCODE
+
+# Deliberately do NOT `exit` here: when this script is run via `irm ... | iex`,
+# `exit` would terminate the user's interactive session (and its scrollback).
+if ($code -ne 0) {
+    Write-Host "[install] Bootstrap reported a non-zero exit ($code). See the setup log under $env:LOCALAPPDATA\WhereZenZoo." -ForegroundColor Yellow
+} else {
+    Write-Host '[install] Done. Open a new terminal to load all changes.' -ForegroundColor Green
+}

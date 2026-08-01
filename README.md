@@ -55,7 +55,7 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | lazygit | `JesseDuffield.lazygit` | git TUI in Neovim |
 | GNU Make | `ezwinports.make` | task runner (this repo's `Makefile`) |
 | starship | `Starship.Starship` | shell prompt |
-| zig | `zig.zig` | C compiler for nvim-treesitter |
+| MSVC Build Tools | `Microsoft.VisualStudio.2022.BuildTools` | C/C++ toolchain nvim-treesitter (main branch) needs to build parsers |
 
 Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked into **both** the PowerShell 7 and Windows PowerShell `$PROFILE` locations, so starship + aliases load whichever shell you use.
 
