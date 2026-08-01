@@ -182,6 +182,31 @@ function Invoke-Packages {
     }
 }
 
+function New-SymbolicLinkCompat {
+    param(
+        [Parameter(Mandatory)][string]$LinkPath,
+        [Parameter(Mandatory)][string]$TargetPath
+    )
+
+    # Windows PowerShell 5.1's New-Item -SymbolicLink omits the unprivileged-create
+    # flag, so it demands admin even when Developer Mode is on. PowerShell 7 honors
+    # Developer Mode. When running under 5.1 (e.g. via the Makefile / bootstrap),
+    # delegate creation to pwsh so no elevation is needed.
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+        if ($pwsh) {
+            & $pwsh.Source -NoProfile -Command "New-Item -ItemType SymbolicLink -Path '$LinkPath' -Target '$TargetPath' -Force > `$null"
+            if (-not (Test-Path $LinkPath)) {
+                throw "Could not create the symlink at $LinkPath via pwsh."
+            }
+            return
+        }
+        Write-Warn 'pwsh not found; falling back to Windows PowerShell, which needs admin for symlinks.'
+    }
+
+    New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath | Out-Null
+}
+
 function Set-Symlink {
     param(
         [Parameter(Mandatory)][string]$LinkPath,
@@ -210,7 +235,7 @@ function Set-Symlink {
         Write-Host "[setup] Existing $Description backed up to $LinkPath.bak"
     }
 
-    New-Item -ItemType SymbolicLink -Path $LinkPath -Target $TargetPath | Out-Null
+    New-SymbolicLinkCompat -LinkPath $LinkPath -TargetPath $TargetPath
     Write-Success "$Description linked"
 }
 
@@ -242,6 +267,10 @@ function Get-ProfilePath {
 
 function Invoke-Symlinks {
     Write-Phase 'Create symlinks'
+
+    # Refresh PATH so a freshly installed pwsh is discoverable for symlink creation
+    # (see New-SymbolicLinkCompat) even when this phase runs on its own.
+    Update-SessionPath
 
     # Make sure the dotfiles submodule (which holds the Neovim config) is present.
     if (Get-Command git -ErrorAction SilentlyContinue) {

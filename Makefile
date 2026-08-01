@@ -1,9 +1,10 @@
 # WhereZenZoo task runner (GNU Make).
-# Recipes shell out to powershell.exe so they work regardless of the shell Make
-# picks on Windows. `make` itself is installed by setup (config/packages.json),
-# so on a fresh machine bootstrap with the install one-liner first.
+# Recipes run under PowerShell 7 (pwsh), which honors Developer Mode for symlink
+# creation (Windows PowerShell 5.1 does not). `make` and `pwsh` are both installed
+# by setup (config/packages.json), so on a fresh machine bootstrap with the install
+# one-liner first, then `make` targets are available.
 
-PS := powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass
+PS := pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass
 
 .PHONY: help setup packages symlinks check uninstall
 .DEFAULT_GOAL := help

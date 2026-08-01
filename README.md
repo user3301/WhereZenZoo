@@ -8,8 +8,21 @@ WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **gi
 
 ## Prerequisites
 
-- **Developer Mode enabled** — so symlinks are created without elevation. (Settings → System → For developers → Developer Mode.)
-- **winget** (App Installer) available — ships with Windows 11; otherwise install "App Installer" from the Microsoft Store.
+- **Developer Mode enabled** — required so symlinks are created without admin. This
+  applies to **both** PowerShell editions: PowerShell 7 honors Developer Mode directly,
+  and under Windows PowerShell 5.1 the setup delegates symlink creation to `pwsh`.
+  Without it (and without an elevated shell) the symlink step fails. Turn it on at
+  Settings → System → For developers → Developer Mode.
+- **winget** (App Installer) — ships with Windows 11; otherwise install "App Installer"
+  from the Microsoft Store.
+
+### Shell compatibility
+
+The scripts run under **both Windows PowerShell 5.1 and PowerShell 7** — launch the
+one-liner from either. PowerShell 7 (`pwsh`) is installed as one of the packages, and
+on the 5.1 path it is what actually creates the symlinks: Windows PowerShell 5.1's own
+`New-Item -SymbolicLink` ignores Developer Mode (it needs admin), so setup routes
+symlink creation through pwsh.
 
 ## Quick start
 
