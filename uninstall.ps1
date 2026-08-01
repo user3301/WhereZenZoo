@@ -46,11 +46,23 @@ function Get-StatePath {
     return (Join-Path (Join-Path $env:LOCALAPPDATA 'WhereZenZoo') 'installed.json')
 }
 
+function Update-SessionPath {
+    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
+    $parts   = @($machine, $user, $links) | Where-Object { $_ }
+    $env:PATH = ($parts -join ';')
+}
+
 function Get-ProfilePath {
     # All-hosts CurrentUser profile path for each installed PowerShell edition,
     # queried from the shell itself so the profile was/is linked in both.
     $paths = New-Object System.Collections.Generic.List[string]
     $paths.Add($PROFILE.CurrentUserAllHosts)
+
+    # Refresh PATH so the other edition is discoverable even if the session PATH
+    # is stale, matching how setup.ps1 resolved the profile locations.
+    Update-SessionPath
 
     $other = if ($PSVersionTable.PSEdition -eq 'Core') { 'powershell.exe' } else { 'pwsh' }
     $cmd = Get-Command $other -ErrorAction SilentlyContinue
@@ -58,7 +70,9 @@ function Get-ProfilePath {
         try {
             $p = & $cmd.Source -NoProfile -Command '$PROFILE.CurrentUserAllHosts' 2>$null
             if ($p) { $paths.Add(($p | Select-Object -First 1).Trim()) }
-        } catch { }
+        } catch {
+            Write-Verbose "Could not resolve $other profile path: $_"
+        }
     }
 
     return ($paths | Where-Object { $_ } | Select-Object -Unique)

@@ -185,13 +185,19 @@ function Get-ProfilePath {
     $paths = New-Object System.Collections.Generic.List[string]
     $paths.Add($PROFILE.CurrentUserAllHosts)
 
+    # Refresh PATH so a just-installed other edition (e.g. pwsh via winget) is
+    # discoverable even when this phase runs on its own (setup.ps1 -Symlinks).
+    Update-SessionPath
+
     $other = if ($PSVersionTable.PSEdition -eq 'Core') { 'powershell.exe' } else { 'pwsh' }
     $cmd = Get-Command $other -ErrorAction SilentlyContinue
     if ($cmd) {
         try {
             $p = & $cmd.Source -NoProfile -Command '$PROFILE.CurrentUserAllHosts' 2>$null
             if ($p) { $paths.Add(($p | Select-Object -First 1).Trim()) }
-        } catch { }
+        } catch {
+            Write-Verbose "Could not resolve $other profile path: $_"
+        }
     }
 
     return ($paths | Where-Object { $_ } | Select-Object -Unique)
