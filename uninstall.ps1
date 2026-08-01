@@ -155,14 +155,24 @@ function Invoke-RemovePackages {
     }
 
     $failed = @()
-    foreach ($id in $ids) {
+    foreach ($rawId in $ids) {
+        # Records from older runs may carry stray whitespace, which makes the id
+        # fail to match what winget has installed. Normalize before using it.
+        $id = "$rawId".Trim()
+        if (-not $id) { continue }
+
         Write-Host "[uninstall] Removing $id..."
         winget uninstall --id $id --exact --silent --disable-interactivity 2>$null
+
+        # Judge success by absence, not the exit code: winget returns non-zero
+        # when the package isn't installed ("No installed package found"), which
+        # for an uninstall is exactly the outcome we want.
+        winget list --id $id --exact --accept-source-agreements 2>$null | Out-Null
         if ($LASTEXITCODE -eq 0) {
-            Write-Done $id
-        } else {
-            Write-Warn "winget could not remove $id (exit $LASTEXITCODE)"
+            Write-Warn "$id is still installed after uninstall; keeping it in the record"
             $failed += $id
+        } else {
+            Write-Done $id
         }
     }
 

@@ -91,13 +91,14 @@ function Get-StatePath {
 function Add-InstalledPackage {
     param([Parameter(Mandatory)][string]$Id)
 
+    $Id = $Id.Trim()
     $path = Get-StatePath
     $dir  = Split-Path $path
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
 
     $ids = @()
     if (Test-Path $path) {
-        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json) } catch { $ids = @() }
+        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json | ForEach-Object { "$_".Trim() }) } catch { $ids = @() }
     }
     if ($ids -notcontains $Id) {
         $ids += $Id
