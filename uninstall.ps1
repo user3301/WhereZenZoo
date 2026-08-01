@@ -147,7 +147,7 @@ function Invoke-RemovePackages {
     }
 
     $ids = @()
-    try { $ids = @(Get-Content $statePath -Raw | ConvertFrom-Json) } catch { $ids = @() }
+    try { $ids = @(Get-Content $statePath -Raw | ConvertFrom-Json | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Unique) } catch { $ids = @() }
     if (-not $ids) {
         Write-Skip 'Install record is empty'
         Remove-Item $statePath -Force -ErrorAction SilentlyContinue

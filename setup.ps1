@@ -69,6 +69,11 @@ $InstallOverrides = @{
         '--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended'
 }
 
+# Packages that genuinely failed to install this run. The setup keeps going so a
+# single bad package doesn't skip later phases, but a non-empty list makes the
+# script exit non-zero so the failure is visible and you can fix it and re-run.
+$script:PackageFailures = @()
+
 function Write-Phase   { param([string]$Name)    Write-Host "`n===> $Name" -ForegroundColor Cyan }
 function Write-Success { param([string]$Message) Write-Host "[ok] $Message" -ForegroundColor Green }
 function Write-Skip    { param([string]$Message) Write-Host "[skip] $Message" -ForegroundColor DarkGray }
@@ -98,7 +103,7 @@ function Add-InstalledPackage {
 
     $ids = @()
     if (Test-Path $path) {
-        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json | ForEach-Object { "$_".Trim() }) } catch { $ids = @() }
+        try { $ids = @(Get-Content $path -Raw | ConvertFrom-Json | ForEach-Object { "$_".Trim() } | Where-Object { $_ } | Select-Object -Unique) } catch { $ids = @() }
     }
     if ($ids -notcontains $Id) {
         $ids += $Id
@@ -137,7 +142,6 @@ function Invoke-Packages {
 
     $manifest = Get-Content (Join-Path $RepoRoot 'config/packages.json') -Raw | ConvertFrom-Json
     $ids = $manifest.Sources[0].Packages.PackageIdentifier
-    $failed = @()
 
     foreach ($id in $ids) {
         if (Test-PackageInstalled -Id $id) {
@@ -167,14 +171,14 @@ function Invoke-Packages {
             Write-Success "$id installed"
         } else {
             Write-Warn "$id did not install cleanly (winget exit $code); continuing"
-            $failed += $id
+            $script:PackageFailures += $id
         }
     }
 
     Update-SessionPath
 
-    if ($failed) {
-        Write-Warn ("May need a manual install: {0}" -f ($failed -join ', '))
+    if ($script:PackageFailures) {
+        Write-Warn ("May need a manual install: {0}" -f ($script:PackageFailures -join ', '))
     }
 }
 
@@ -258,7 +262,9 @@ function Invoke-Symlinks {
 $logDir = Join-Path $env:LOCALAPPDATA 'WhereZenZoo'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
 $logFile = Join-Path $logDir ("setup-{0:yyyyMMdd-HHmmss}.log" -f (Get-Date))
-try { Start-Transcript -Path $logFile -Force | Out-Null } catch { }
+$transcribing = $false
+try { Start-Transcript -Path $logFile -Force | Out-Null; $transcribing = $true }
+catch { Write-Warn "Could not start logging ($_); continuing without a log file." }
 
 try {
     Write-Host ''
@@ -270,8 +276,18 @@ try {
     if ($All -or $Packages) { Invoke-Packages }
     if ($All -or $Symlinks) { Invoke-Symlinks }
 
-    Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes."
+    if ($script:PackageFailures.Count -gt 0) {
+        Write-Host "`nSetup finished with errors — these packages did not install: $($script:PackageFailures -join ', ')." -ForegroundColor Red
+        Write-Host 'Fix the cause and re-run; setup is idempotent and will skip what already succeeded.' -ForegroundColor Red
+    } else {
+        Write-Host "`nSetup complete. Restart your terminal to load persistent PATH changes." -ForegroundColor Green
+    }
 } finally {
-    try { Stop-Transcript | Out-Null } catch { }
-    Write-Host "Log saved to $logFile"
+    if ($transcribing) {
+        try { Stop-Transcript | Out-Null } catch { }
+        Write-Host "Log saved to $logFile"
+    }
 }
+
+# Exit non-zero on a real failure so it's visible to callers (make, wrappers).
+if ($script:PackageFailures.Count -gt 0) { exit 1 }

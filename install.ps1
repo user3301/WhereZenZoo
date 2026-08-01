@@ -64,10 +64,14 @@ Write-Host '[install] Handing off to bootstrap.ps1...'
 & powershell.exe -ExecutionPolicy Bypass -File $bootstrap
 $code = $LASTEXITCODE
 
-# Deliberately do NOT `exit` here: when this script is run via `irm ... | iex`,
-# `exit` would terminate the user's interactive session (and its scrollback).
 if ($code -ne 0) {
-    Write-Host "[install] Bootstrap reported a non-zero exit ($code). See the setup log under $env:LOCALAPPDATA\WhereZenZoo." -ForegroundColor Yellow
+    Write-Host "[install] Setup reported errors (exit $code). Check the log under $env:LOCALAPPDATA\WhereZenZoo, fix the cause, and re-run." -ForegroundColor Red
 } else {
     Write-Host '[install] Done. Open a new terminal to load all changes.' -ForegroundColor Green
 }
+
+# Propagate the failure when run as a script file (powershell.exe -File / a
+# wrapper), so it can be detected. When run via `irm ... | iex` there is no
+# script path, and calling `exit` would close the user's interactive session
+# (and its scrollback) — the message above already surfaced the error.
+if ($MyInvocation.MyCommand.Path) { exit $code }
