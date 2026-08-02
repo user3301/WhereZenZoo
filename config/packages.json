@@ -12,6 +12,8 @@
         { "PackageIdentifier": "JesseDuffield.lazygit" },
         { "PackageIdentifier": "ezwinports.make" },
         { "PackageIdentifier": "Starship.Starship" },
+        { "PackageIdentifier": "GitHub.Copilot" },
+        { "PackageIdentifier": "GitHub.cli" },
         { "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools" }
       ],
       "SourceDetails": {
