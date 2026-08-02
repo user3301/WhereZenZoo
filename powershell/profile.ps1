@@ -8,7 +8,18 @@ if (Get-Command starship -ErrorAction SilentlyContinue) {
 }
 
 # Sensible line-editing defaults (PSReadLine ships with PowerShell).
-Set-PSReadLineOption -EditMode Windows -PredictionSource HistoryAndPlugin -ErrorAction SilentlyContinue
+# -PredictionSource needs PSReadLine 2.2+ (PowerShell 7); Windows PowerShell 5.1's
+# bundled PSReadLine 2.0.0 lacks it, and a missing parameter is a terminating
+# binding error that -ErrorAction can't suppress, so gate it explicitly.
+try {
+    if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) {
+        Set-PSReadLineOption -EditMode Windows -PredictionSource HistoryAndPlugin
+    } else {
+        Set-PSReadLineOption -EditMode Windows
+    }
+} catch {
+    # PSReadLine unavailable or misbehaving; skip silently.
+}
 
 Set-Alias vim nvim -ErrorAction SilentlyContinue
 Set-Alias ll Get-ChildItem -ErrorAction SilentlyContinue
