@@ -130,6 +130,8 @@ function Invoke-RemoveSymlinks {
         Remove-Symlink -LinkPath $profilePath `
             -TargetSuffix 'powershell\profile.ps1' -Description "$edition profile"
     }
+    Remove-Symlink -LinkPath (Join-Path $env:USERPROFILE '.config\git') `
+        -TargetSuffix 'git\.config\git' -Description 'Git config'
 }
 
 function Invoke-RemovePackages {

@@ -287,6 +287,12 @@ function Invoke-Symlinks {
         $edition = if ($profilePath -like '*\PowerShell\*') { 'PowerShell 7' } else { 'Windows PowerShell' }
         Set-Symlink -LinkPath $profilePath -TargetPath $profileSrc -Description "$edition profile"
     }
+
+    # Git reads ~/.config/git/config on all platforms (no XDG_CONFIG_HOME needed),
+    # so linking the whole directory keeps identity/aliases/ignore rules identical
+    # across every machine this setup runs on.
+    $gitConfigSrc = Join-Path $RepoRoot 'submodules\dotfiles\git\.config\git'
+    Set-Symlink -LinkPath (Join-Path $env:USERPROFILE '.config\git') -TargetPath $gitConfigSrc -Description 'Git config'
 }
 
 # Log the whole run to a file so failures are diagnosable even if the window closes.
