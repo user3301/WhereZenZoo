@@ -59,6 +59,7 @@ $PackageCommands = @{
     'ezwinports.make'         = 'make'
     'Starship.Starship'       = 'starship'
     'GitHub.cli'              = 'gh'
+    'GitHub.Copilot'          = 'copilot'
 }
 
 # Per-package winget install overrides. Some packages need extra installer args
