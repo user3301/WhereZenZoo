@@ -12,9 +12,10 @@ if (Get-Command starship -ErrorAction SilentlyContinue) {
 # bundled PSReadLine 2.0.0 lacks it, and a missing parameter is a terminating
 # binding error that -ErrorAction can't suppress, so gate it explicitly.
 try {
-    if ((Get-Command Set-PSReadLineOption).Parameters.ContainsKey('PredictionSource')) {
+    $cmd = Get-Command Set-PSReadLineOption -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Parameters.ContainsKey('PredictionSource')) {
         Set-PSReadLineOption -EditMode Windows -PredictionSource HistoryAndPlugin
-    } else {
+    } elseif ($cmd) {
         Set-PSReadLineOption -EditMode Windows
     }
 } catch {
