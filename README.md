@@ -70,7 +70,7 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | starship | `Starship.Starship` | shell prompt |
 | MSVC Build Tools | `Microsoft.VisualStudio.2022.BuildTools` | C/C++ toolchain nvim-treesitter (main branch) needs to build parsers |
 
-Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked into **both** the PowerShell 7 and Windows PowerShell `$PROFILE` locations, so starship + aliases load whichever shell you use.
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked into **both** the PowerShell 7 and Windows PowerShell `$PROFILE` locations, so starship + aliases load whichever shell you use. The git identity/config (`submodules/dotfiles/git/.config/git`) is symlinked to `%USERPROFILE%\.config\git`, so `user.name`, `user.email`, and other git settings are identical on every machine this setup runs on.
 
 ## Idempotency & safety
 
@@ -80,8 +80,9 @@ Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles
   new one is installed.
 - **Never overwrites your tools.** A package already present (on PATH or known to winget)
   is skipped. Uninstall only removes packages recorded as installed by this setup.
-- **Existing configs are preserved.** An existing `%LOCALAPPDATA%\nvim` or `$PROFILE` is
-  moved to `*.bak` before the symlink is created, and restored on uninstall.
+- **Existing configs are preserved.** An existing `%LOCALAPPDATA%\nvim`, `$PROFILE`, or
+  `%USERPROFILE%\.config\git` is moved to `*.bak` before the symlink is created, and
+  restored on uninstall.
 
 ## Common commands (after bootstrap installs `make`)
 
