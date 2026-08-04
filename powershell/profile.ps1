@@ -22,5 +22,5 @@ try {
     # PSReadLine unavailable or misbehaving; skip silently.
 }
 
-Set-Alias vim nvim -ErrorAction SilentlyContinue
-Set-Alias ll Get-ChildItem -ErrorAction SilentlyContinue
+$aliasesPath = Join-Path (Join-Path $HOME 'powershell') 'aliases.ps1'
+. $aliasesPath

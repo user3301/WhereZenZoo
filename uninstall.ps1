@@ -3,10 +3,10 @@
 .SYNOPSIS
     Reverts a WhereZenZoo setup.
 .DESCRIPTION
-    Removes the symlinks created by setup.ps1 (restoring any .bak backups) and
-    uninstalls only the winget packages that setup.ps1 actually installed, as
-    recorded in the per-user state file. Tools that were already present before
-    setup ran are never removed.
+    Removes the symlinks created by setup.ps1 and uninstalls only the winget
+    packages that setup.ps1 actually installed, as recorded in the per-user
+    state file. Tools that were already present before setup ran are never
+    removed.
 
     Runnable either from a clone or piped straight from the web:
         irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/uninstall.ps1 | iex
@@ -57,57 +57,73 @@ function Update-SessionPath {
     $env:PATH = ($parts -join ';')
 }
 
-function Get-ProfilePath {
-    # All-hosts CurrentUser profile path for each installed PowerShell edition,
-    # queried from the shell itself so the profile was/is linked in both.
-    $paths = New-Object System.Collections.Generic.List[string]
-    $paths.Add($PROFILE.CurrentUserAllHosts)
-
-    # Refresh PATH so the other edition is discoverable even if the session PATH
-    # is stale, matching how setup.ps1 resolved the profile locations.
+function Get-PowerShell7ProfilePath {
+    # Match setup.ps1: query pwsh so OneDrive KFR / Known Folder redirection is
+    # reflected in the CurrentUserCurrentHost path.
     Update-SessionPath
 
-    $other = if ($PSVersionTable.PSEdition -eq 'Core') { 'powershell.exe' } else { 'pwsh' }
-    $cmd = Get-Command $other -ErrorAction SilentlyContinue
-    if ($cmd) {
-        try {
-            $p = & $cmd.Source -NoProfile -Command '$PROFILE.CurrentUserAllHosts' 2>$null
-            if ($p) { $paths.Add(($p | Select-Object -First 1).Trim()) }
-        } catch {
-            Write-Verbose "Could not resolve $other profile path: $_"
-        }
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        return $PROFILE.CurrentUserCurrentHost
     }
 
-    return ($paths | Where-Object { $_ } | Select-Object -Unique)
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        return $null
+    }
+
+    $path = & $pwsh.Source -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' 2>$null
+    if ($path) {
+        return ($path | Select-Object -First 1).Trim()
+    }
+
+    return $null
 }
 
 function Remove-Symlink {
     param(
         [Parameter(Mandatory)][string]$LinkPath,
-        [Parameter(Mandatory)][string]$TargetSuffix,  # link is ours only if its target ends with this
+        [string]$TargetPath,
+        [string]$TargetSuffix,
         [Parameter(Mandatory)][string]$Description
     )
 
-    if (-not (Test-Path $LinkPath)) {
+    $item = Get-Item -LiteralPath $LinkPath -Force -ErrorAction SilentlyContinue
+    if (-not $item) {
         Write-Skip "$Description not found"
         return
     }
 
-    $item = Get-Item $LinkPath -Force
     if ($item.LinkType -ne 'SymbolicLink') {
         Write-Warn "$Description at $LinkPath is not a symlink; leaving it alone"
         return
     }
 
     $target = ($item.Target | Select-Object -First 1)
-    if ($target -and ($target -notlike "*$TargetSuffix")) {
+    $matchesExpectedTarget = $false
+    if ($target -and $TargetPath) {
+        $resolvedTarget = if ([System.IO.Path]::IsPathRooted($target)) {
+            [System.IO.Path]::GetFullPath($target)
+        } else {
+            [System.IO.Path]::GetFullPath((Join-Path $item.DirectoryName $target))
+        }
+        $expectedTarget = [System.IO.Path]::GetFullPath($TargetPath)
+        $matchesExpectedTarget = [string]::Equals(
+            $resolvedTarget.TrimEnd('\', '/'),
+            $expectedTarget.TrimEnd('\', '/'),
+            [System.StringComparison]::OrdinalIgnoreCase
+        )
+    } elseif ($target -and $TargetSuffix) {
+        $matchesExpectedTarget = $target -like "*$TargetSuffix"
+    }
+
+    if (-not $matchesExpectedTarget) {
         Write-Warn "$Description points at $target (not a WhereZenZoo target); leaving it alone"
         return
     }
 
     # Delete only the reparse point. Remove-Item -Recurse on a directory symlink can
     # delete the TARGET's contents on PowerShell 5.1, so delete the link directly.
-    if ($item.PSIsContainer) {
+    if ($item -is [System.IO.DirectoryInfo]) {
         [System.IO.Directory]::Delete($item.FullName, $false)
     } else {
         [System.IO.File]::Delete($item.FullName)
@@ -125,11 +141,18 @@ function Invoke-RemoveSymlinks {
     Write-Phase 'Remove symlinks'
     Remove-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') `
         -TargetSuffix 'nvim\.config\nvim' -Description 'Neovim config'
-    foreach ($profilePath in (Get-ProfilePath)) {
-        $edition = if ($profilePath -like '*\PowerShell\*') { 'PowerShell 7' } else { 'Windows PowerShell' }
+
+    $profilePath = Get-PowerShell7ProfilePath
+    if ($profilePath) {
         Remove-Symlink -LinkPath $profilePath `
-            -TargetSuffix 'powershell\profile.ps1' -Description "$edition profile"
+            -TargetSuffix 'powershell\profile.ps1' -Description 'PowerShell 7 CurrentUserCurrentHost profile'
+    } else {
+        Write-Skip 'PowerShell 7 profile path could not be resolved'
     }
+
+    $repoRoot = if ($PSScriptRoot) { $PSScriptRoot } else { Join-Path $HOME 'dotfiles' }
+    Remove-Symlink -LinkPath (Join-Path $HOME 'powershell') `
+        -TargetPath (Join-Path $repoRoot 'powershell') -Description 'PowerShell directory'
     Remove-Symlink -LinkPath (Join-Path $env:USERPROFILE '.config\git') `
         -TargetSuffix 'git\.config\git' -Description 'Git config'
 }

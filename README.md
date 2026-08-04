@@ -4,7 +4,7 @@
 
 > "WhereZenZoo('味儿真足'）- your Windows 11 dev environment, seasoned just right. PowerShell meets dotfiles swagger, no more clicking 'Next' like a peasant. 100% less mouse and 100% more 良子 energy."
 
-WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs, symlinks your Neovim config, and sets up a [starship](https://starship.rs/) prompt.
+WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs, symlinks your Neovim and PowerShell configuration, and sets up a [starship](https://starship.rs/) prompt.
 
 ## Prerequisites
 
@@ -46,9 +46,10 @@ One-liner to revert the setup:
 irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/uninstall.ps1 | iex
 ```
 
-This removes the symlinks (restoring any `.bak` backups) and uninstalls **only the
-packages this setup installed**. Tools you already had are left alone. Add `-Purge`
-(when run from a clone) to also delete LazyVim runtime data and the `~\dotfiles` clone:
+This removes the symlinks (restoring any legacy `.bak` backups from older releases)
+and uninstalls **only the packages this setup installed**. Tools you already had are
+left alone. Add `-Purge` (when run from a clone) to also delete LazyVim runtime data
+and the `~\dotfiles` clone:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ~\dotfiles\uninstall.ps1 -Purge
@@ -72,7 +73,7 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | GitHub Copilot CLI | `GitHub.Copilot` | `copilot` for AI-powered coding assistance in the terminal |
 | MSVC Build Tools | `Microsoft.VisualStudio.2022.BuildTools` | C/C++ toolchain nvim-treesitter (main branch) needs to build parsers |
 
-Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles/nvim/.config/nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The minimal PowerShell profile (`powershell/profile.ps1`) is symlinked into **both** the PowerShell 7 and Windows PowerShell `$PROFILE` locations, so starship + aliases load whichever shell you use. The git identity/config (`submodules/dotfiles/git/.config/git`) is symlinked to `%USERPROFILE%\.config\git`, so `user.name`, `user.email`, and other git settings are identical on every machine this setup runs on.
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules\dotfiles\nvim\.config\nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The repository's `powershell` directory is exposed as `%USERPROFILE%\powershell`, and the PowerShell 7 `$PROFILE.CurrentUserCurrentHost` path is resolved by `pwsh` (so OneDrive Known Folder redirection is honored) and symlinked to `%USERPROFILE%\powershell\profile.ps1`. That profile loads `aliases.ps1`, including the `copilot` alias that forwards to `agency copilot`. The git identity/config (`submodules\dotfiles\git\.config\git`) is symlinked to `%USERPROFILE%\.config\git`, so `user.name`, `user.email`, and other git settings are identical on every machine this setup runs on.
 
 ## Idempotency & safety
 
@@ -82,16 +83,16 @@ Your Neovim config comes from the **`dotfiles` submodule** (`submodules/dotfiles
   new one is installed.
 - **Never overwrites your tools.** A package already present (on PATH or known to winget)
   is skipped. Uninstall only removes packages recorded as installed by this setup.
-- **Existing configs are preserved.** An existing `%LOCALAPPDATA%\nvim`, `$PROFILE`, or
-  `%USERPROFILE%\.config\git` is moved to `*.bak` before the symlink is created, and
-  restored on uninstall.
+- **Existing configs are never replaced.** Missing symlinks are created and existing
+  symlinks with stale targets are repaired. A real file or directory at a managed
+  path causes setup to stop with a clear conflict error so you can move it manually.
 
 ## Common commands (after bootstrap installs `make`)
 
 ```powershell
 make setup       # install packages + create symlinks
 make packages    # install winget packages only
-make symlinks    # create Neovim + profile symlinks only
+make symlinks    # create Neovim + PowerShell + git config symlinks only
 make check       # validate .ps1 and .json files parse
 make uninstall   # revert setup (symlinks + packages we installed)
 ```
@@ -109,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File $env:USERPROFILE\dotfiles\bootstrap.ps1
 ## Notes
 
 - The bootstrap runs under Windows PowerShell 5.1 (so it works before PowerShell 7 is
-  installed); PowerShell 7 is then installed as a package and the profile is linked for
-  both shells.
+  installed); PowerShell 7 is then installed as a package and its
+  `$PROFILE.CurrentUserCurrentHost` profile is linked.
 - winget shims live in `%LOCALAPPDATA%\Microsoft\WinGet\Links`; the scripts refresh the
   current session PATH after installs, but open a fresh terminal to pick up all changes.

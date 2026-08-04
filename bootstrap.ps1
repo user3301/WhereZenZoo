@@ -4,8 +4,9 @@
     Bootstraps the WhereZenZoo setup from a local clone.
 .DESCRIPTION
     Ensures winget and Git are present, initialises the dotfiles submodule, then
-    runs setup.ps1. Use this after cloning the repo manually; install.ps1 calls it
-    for you on a fresh machine.
+    runs setup.ps1, which links the repository PowerShell directory into the
+    user's home and configures the PowerShell 7 profile. Use this after cloning
+    the repo manually; install.ps1 calls it for you on a fresh machine.
 .EXAMPLE
     powershell.exe -ExecutionPolicy Bypass -File .\bootstrap.ps1
 .NOTES

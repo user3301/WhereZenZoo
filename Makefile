@@ -10,7 +10,7 @@ PS := pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass
 .DEFAULT_GOAL := help
 
 help:
-	@$(PS) -Command "Write-Host 'WhereZenZoo make targets:'; Write-Host '  make setup      install winget packages + create symlinks'; Write-Host '  make packages   install winget packages only'; Write-Host '  make symlinks   create Neovim + profile symlinks only'; Write-Host '  make check      validate .ps1 and .json files parse'; Write-Host '  make uninstall  revert setup (symlinks + packages we installed)'"
+	@$(PS) -Command "Write-Host 'WhereZenZoo make targets:'; Write-Host '  make setup      install winget packages + create symlinks'; Write-Host '  make packages   install winget packages only'; Write-Host '  make symlinks   create Neovim + PowerShell + git symlinks only'; Write-Host '  make check      validate .ps1 and .json files parse'; Write-Host '  make uninstall  revert setup (symlinks + packages we installed)'"
 
 setup:
 	$(PS) -File ./setup.ps1
