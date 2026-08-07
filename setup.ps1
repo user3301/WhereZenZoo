@@ -4,7 +4,8 @@
     Main WhereZenZoo setup orchestrator (winget-based).
 .DESCRIPTION
     Installs the winget packages declared in config/packages.json and creates the
-    dotfile symlinks (Neovim config from the dotfiles submodule, PowerShell profile).
+    dotfile symlinks (Neovim config from the dotfiles submodule, PowerShell
+    directory and PowerShell 7 profile, and Git config).
 
     The run is idempotent: packages that are already installed are skipped, and
     symlinks that already point at the right target are left alone. Packages this
@@ -15,7 +16,7 @@
 .PARAMETER Packages
     Installs the winget packages listed in config/packages.json.
 .PARAMETER Symlinks
-    Creates the Neovim config and PowerShell profile symlinks.
+    Creates the Neovim, PowerShell, and Git configuration symlinks.
 .EXAMPLE
     powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1
 
@@ -57,7 +58,7 @@ $PackageCommands = @{
     'BurntSushi.ripgrep.MSVC' = 'rg'
     'JesseDuffield.lazygit'   = 'lazygit'
     'ezwinports.make'         = 'make'
-    'Starship.Starship'       = 'starship'
+    'ajeetdsouza.zoxide'      = 'zoxide'
     'GitHub.cli'              = 'gh'
     'GitHub.Copilot'          = 'copilot'
 }
@@ -197,8 +198,10 @@ function New-SymbolicLinkCompat {
     if ($PSVersionTable.PSEdition -eq 'Desktop') {
         $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
         if ($pwsh) {
-            & $pwsh.Source -NoProfile -Command "New-Item -ItemType SymbolicLink -Path '$LinkPath' -Target '$TargetPath' -Force > `$null"
-            if (-not (Test-Path $LinkPath)) {
+            $escapedLink = $LinkPath.Replace("'", "''")
+            $escapedTarget = $TargetPath.Replace("'", "''")
+            & $pwsh.Source -NoProfile -Command "`$ErrorActionPreference = 'Stop'; New-Item -ItemType SymbolicLink -Path '$escapedLink' -Target '$escapedTarget' | Out-Null"
+            if ($LASTEXITCODE -ne 0 -or -not (Get-Item -LiteralPath $LinkPath -Force -ErrorAction SilentlyContinue)) {
                 throw "Could not create the symlink at $LinkPath via pwsh."
             }
             return
@@ -226,45 +229,64 @@ function Set-Symlink {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
 
-    if (Test-Path $LinkPath) {
-        $existing = Get-Item $LinkPath -Force
-        if ($existing.LinkType -eq 'SymbolicLink' -and $existing.Target -eq $TargetPath) {
-            Write-Skip "$Description already linked"
-            return
-        }
+    $existing = Get-Item -LiteralPath $LinkPath -Force -ErrorAction SilentlyContinue
+    if ($existing) {
+        if ($existing.LinkType -eq 'SymbolicLink') {
+            $rawTarget = $existing.Target | Select-Object -First 1
+            $existingTarget = if ([System.IO.Path]::IsPathRooted($rawTarget)) {
+                [System.IO.Path]::GetFullPath($rawTarget)
+            } else {
+                [System.IO.Path]::GetFullPath((Join-Path $existing.DirectoryName $rawTarget))
+            }
+            $desiredTarget = [System.IO.Path]::GetFullPath($TargetPath)
 
-        Rename-Item $LinkPath "$LinkPath.bak" -Force
-        Write-Host "[setup] Existing $Description backed up to $LinkPath.bak"
+            if ([string]::Equals(
+                $existingTarget.TrimEnd('\', '/'),
+                $desiredTarget.TrimEnd('\', '/'),
+                [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+                Write-Skip "$Description already linked"
+                return
+            }
+
+            # Repair only reparse points we created or can safely replace. Never use
+            # Remove-Item -Recurse here: Windows PowerShell 5.1 can follow a directory
+            # symlink and delete the target contents.
+            if ($existing -is [System.IO.DirectoryInfo]) {
+                [System.IO.Directory]::Delete($existing.FullName, $false)
+            } else {
+                [System.IO.File]::Delete($existing.FullName)
+            }
+            Write-Host "[setup] Replacing $Description symlink (was $rawTarget)"
+        } else {
+            throw "Cannot create $Description symlink at '$LinkPath': a real file or directory already exists. Move it aside manually and re-run setup."
+        }
     }
 
     New-SymbolicLinkCompat -LinkPath $LinkPath -TargetPath $TargetPath
     Write-Success "$Description linked"
 }
 
-function Get-ProfilePath {
-    # All-hosts CurrentUser profile path for each installed PowerShell edition, so
-    # the profile loads in both PowerShell 7 (pwsh) and Windows PowerShell. Each
-    # path is queried from the shell itself so OneDrive Documents redirection is
-    # resolved correctly.
-    $paths = New-Object System.Collections.Generic.List[string]
-    $paths.Add($PROFILE.CurrentUserAllHosts)
-
-    # Refresh PATH so a just-installed other edition (e.g. pwsh via winget) is
-    # discoverable even when this phase runs on its own (setup.ps1 -Symlinks).
+function Get-PowerShell7ProfilePath {
+    # Query pwsh itself instead of constructing Documents\PowerShell manually.
+    # This honors Known Folder redirection, including OneDrive KFR.
     Update-SessionPath
 
-    $other = if ($PSVersionTable.PSEdition -eq 'Core') { 'powershell.exe' } else { 'pwsh' }
-    $cmd = Get-Command $other -ErrorAction SilentlyContinue
-    if ($cmd) {
-        try {
-            $p = & $cmd.Source -NoProfile -Command '$PROFILE.CurrentUserAllHosts' 2>$null
-            if ($p) { $paths.Add(($p | Select-Object -First 1).Trim()) }
-        } catch {
-            Write-Verbose "Could not resolve $other profile path: $_"
-        }
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        return $PROFILE.CurrentUserCurrentHost
     }
 
-    return ($paths | Where-Object { $_ } | Select-Object -Unique)
+    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        throw 'PowerShell 7 is required to resolve and link its CurrentUserCurrentHost profile.'
+    }
+
+    $path = & $pwsh.Source -NoProfile -Command '$PROFILE.CurrentUserCurrentHost' 2>$null
+    if (-not $path) {
+        throw 'PowerShell 7 did not return its CurrentUserCurrentHost profile path.'
+    }
+
+    return ($path | Select-Object -First 1).Trim()
 }
 
 function Invoke-Symlinks {
@@ -282,11 +304,15 @@ function Invoke-Symlinks {
     $nvimSrc = Join-Path $RepoRoot 'submodules\dotfiles\nvim\.config\nvim'
     Set-Symlink -LinkPath (Join-Path $env:LOCALAPPDATA 'nvim') -TargetPath $nvimSrc -Description 'Neovim config'
 
-    $profileSrc = Join-Path $RepoRoot 'powershell\profile.ps1'
-    foreach ($profilePath in (Get-ProfilePath)) {
-        $edition = if ($profilePath -like '*\PowerShell\*') { 'PowerShell 7' } else { 'Windows PowerShell' }
-        Set-Symlink -LinkPath $profilePath -TargetPath $profileSrc -Description "$edition profile"
-    }
+    # Keep profile contents at a stable home-relative path regardless of where the
+    # repository was cloned. The profile link then targets this directory link.
+    $repoPowerShell = Join-Path $RepoRoot 'powershell'
+    $homePowerShell = Join-Path $HOME 'powershell'
+    Set-Symlink -LinkPath $homePowerShell -TargetPath $repoPowerShell -Description 'PowerShell directory'
+
+    $profilePath = Get-PowerShell7ProfilePath
+    $profileSrc = Join-Path $homePowerShell 'profile.ps1'
+    Set-Symlink -LinkPath $profilePath -TargetPath $profileSrc -Description 'PowerShell 7 CurrentUserCurrentHost profile'
 
     # Git reads ~/.config/git/config on all platforms (no XDG_CONFIG_HOME needed),
     # so linking the whole directory keeps identity/aliases/ignore rules identical

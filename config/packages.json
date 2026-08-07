@@ -11,7 +11,7 @@
         { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
         { "PackageIdentifier": "JesseDuffield.lazygit" },
         { "PackageIdentifier": "ezwinports.make" },
-        { "PackageIdentifier": "Starship.Starship" },
+        { "PackageIdentifier": "ajeetdsouza.zoxide" },
         { "PackageIdentifier": "GitHub.Copilot" },
         { "PackageIdentifier": "GitHub.cli" },
         { "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools" }
