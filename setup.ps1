@@ -5,7 +5,7 @@
 .DESCRIPTION
     Installs the winget packages declared in config/packages.json and creates the
     dotfile symlinks (Neovim config from the dotfiles submodule, PowerShell
-    directory and PowerShell 7 profile).
+    directory and PowerShell 7 profile, and Git config).
 
     The run is idempotent: packages that are already installed are skipped, and
     symlinks that already point at the right target are left alone. Packages this
@@ -16,8 +16,7 @@
 .PARAMETER Packages
     Installs the winget packages listed in config/packages.json.
 .PARAMETER Symlinks
-    Creates the Neovim config, PowerShell directory, and PowerShell 7 profile
-    symlinks.
+    Creates the Neovim, PowerShell, and Git configuration symlinks.
 .EXAMPLE
     powershell.exe -ExecutionPolicy Bypass -File .\setup.ps1
 
@@ -59,7 +58,6 @@ $PackageCommands = @{
     'BurntSushi.ripgrep.MSVC' = 'rg'
     'JesseDuffield.lazygit'   = 'lazygit'
     'ezwinports.make'         = 'make'
-    'Starship.Starship'       = 'starship'
     'GitHub.cli'              = 'gh'
     'GitHub.Copilot'          = 'copilot'
 }

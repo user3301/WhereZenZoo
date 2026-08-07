@@ -4,7 +4,7 @@
 
 > "WhereZenZoo('味儿真足'）- your Windows 11 dev environment, seasoned just right. PowerShell meets dotfiles swagger, no more clicking 'Next' like a peasant. 100% less mouse and 100% more 良子 energy."
 
-WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs, symlinks your Neovim and PowerShell configuration, and sets up a [starship](https://starship.rs/) prompt.
+WhereZenZoo is a small, **winget-based** Windows 11 bootstrapper for a lean **git + Neovim/LazyVim** workflow. No bloat: it installs only what LazyVim needs and symlinks your Neovim and PowerShell configuration.
 
 ## Prerequisites
 
@@ -68,7 +68,6 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | ripgrep | `BurntSushi.ripgrep.MSVC` | LazyVim grep |
 | lazygit | `JesseDuffield.lazygit` | git TUI in Neovim |
 | GNU Make | `ezwinports.make` | task runner (this repo's `Makefile`) |
-| starship | `Starship.Starship` | shell prompt |
 | GitHub CLI | `GitHub.cli` | `gh` for PRs/issues from the terminal |
 | GitHub Copilot CLI | `GitHub.Copilot` | `copilot` for AI-powered coding assistance in the terminal |
 | MSVC Build Tools | `Microsoft.VisualStudio.2022.BuildTools` | C/C++ toolchain nvim-treesitter (main branch) needs to build parsers |
