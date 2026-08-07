@@ -1,4 +1,4 @@
-Set-Alias vim nvim -ErrorAction SilentlyContinue
+Set-Alias v nvim -ErrorAction SilentlyContinue
 Set-Alias ll Get-ChildItem -ErrorAction SilentlyContinue
 
 function Invoke-AgencyCopilot {
