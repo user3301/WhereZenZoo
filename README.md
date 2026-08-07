@@ -68,11 +68,12 @@ Everything is declared in `config/packages.json` (standard `winget export` schem
 | ripgrep | `BurntSushi.ripgrep.MSVC` | LazyVim grep |
 | lazygit | `JesseDuffield.lazygit` | git TUI in Neovim |
 | GNU Make | `ezwinports.make` | task runner (this repo's `Makefile`) |
+| zoxide | `ajeetdsouza.zoxide` | frecency-based directory navigation |
 | GitHub CLI | `GitHub.cli` | `gh` for PRs/issues from the terminal |
 | GitHub Copilot CLI | `GitHub.Copilot` | `copilot` for AI-powered coding assistance in the terminal |
 | MSVC Build Tools | `Microsoft.VisualStudio.2022.BuildTools` | C/C++ toolchain nvim-treesitter (main branch) needs to build parsers |
 
-Your Neovim config comes from the **`dotfiles` submodule** (`submodules\dotfiles\nvim\.config\nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The repository's `powershell` directory is exposed as `%USERPROFILE%\powershell`, and the PowerShell 7 `$PROFILE.CurrentUserCurrentHost` path is resolved by `pwsh` (so OneDrive Known Folder redirection is honored) and symlinked to `%USERPROFILE%\powershell\profile.ps1`. That profile loads `aliases.ps1`, including the `copilot` alias that forwards to `agency copilot`. The git identity/config (`submodules\dotfiles\git\.config\git`) is symlinked to `%USERPROFILE%\.config\git`, so `user.name`, `user.email`, and other git settings are identical on every machine this setup runs on.
+Your Neovim config comes from the **`dotfiles` submodule** (`submodules\dotfiles\nvim\.config\nvim`) and is symlinked to `%LOCALAPPDATA%\nvim`. The repository's `powershell` directory is exposed as `%USERPROFILE%\powershell`, and the PowerShell 7 `$PROFILE.CurrentUserCurrentHost` path is resolved by `pwsh` (so OneDrive Known Folder redirection is honored) and symlinked to `%USERPROFILE%\powershell\profile.ps1`. That profile initializes zoxide's `z` command and loads `aliases.ps1`, including the `copilot` alias that forwards to `agency copilot`. The git identity/config (`submodules\dotfiles\git\.config\git`) is symlinked to `%USERPROFILE%\.config\git`, so `user.name`, `user.email`, and other git settings are identical on every machine this setup runs on.
 
 ## Idempotency & safety
 

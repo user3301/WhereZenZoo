@@ -58,6 +58,7 @@ $PackageCommands = @{
     'BurntSushi.ripgrep.MSVC' = 'rg'
     'JesseDuffield.lazygit'   = 'lazygit'
     'ezwinports.make'         = 'make'
+    'ajeetdsouza.zoxide'      = 'zoxide'
     'GitHub.cli'              = 'gh'
     'GitHub.Copilot'          = 'copilot'
 }
