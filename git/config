@@ -1,0 +1,16 @@
+# Windows Git configuration, exposed at ~/.config/git by a directory junction.
+
+[user]
+	name = "user3301"
+	email = "26126682+user3301@users.noreply.github.com"
+
+[core]
+	autocrlf = "input"
+	editor = nvim
+	excludesfile = ~/.config/git/.gitignore_global
+
+[merge]
+	conflictStyle = zdiff3
+
+[include]
+	path = ~/.config/git/config.local

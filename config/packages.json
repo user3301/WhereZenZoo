@@ -1,28 +1,15 @@
-{
-  "$schema": "https://aka.ms/winget-packages.schema.2.0.json",
-  "CreationDate": "2026-08-01T00:00:00.000-00:00",
-  "Sources": [
-    {
-      "Packages": [
-        { "PackageIdentifier": "Git.Git" },
-        { "PackageIdentifier": "Microsoft.PowerShell" },
-        { "PackageIdentifier": "Neovim.Neovim" },
-        { "PackageIdentifier": "sharkdp.fd" },
-        { "PackageIdentifier": "BurntSushi.ripgrep.MSVC" },
-        { "PackageIdentifier": "JesseDuffield.lazygit" },
-        { "PackageIdentifier": "ezwinports.make" },
-        { "PackageIdentifier": "ajeetdsouza.zoxide" },
-        { "PackageIdentifier": "GitHub.Copilot" },
-        { "PackageIdentifier": "GitHub.cli" },
-        { "PackageIdentifier": "Microsoft.VisualStudio.2022.BuildTools" }
-      ],
-      "SourceDetails": {
-        "Argument": "https://cdn.winget.microsoft.com/cache",
-        "Identifier": "Microsoft.Winget.Source_8wekyb3d8bbwe",
-        "Name": "winget",
-        "Type": "Microsoft.PreIndexed.Package"
-      }
-    }
-  ],
-  "WinGetVersion": "1.6.0"
-}
+[
+  { "id": "Git.Git", "command": "git" },
+  { "id": "Neovim.Neovim", "command": "nvim" },
+  { "id": "sharkdp.fd", "command": "fd" },
+  { "id": "BurntSushi.ripgrep.MSVC", "command": "rg" },
+  { "id": "JesseDuffield.lazygit", "command": "lazygit" },
+  { "id": "ajeetdsouza.zoxide", "command": "zoxide" },
+  { "id": "GitHub.cli", "command": "gh" },
+  { "id": "GitHub.Copilot", "command": "copilot" },
+  {
+    "id": "Microsoft.VisualStudio.2022.BuildTools",
+    "optional": true,
+    "override": "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+  }
+]
