@@ -1,77 +1,78 @@
-#Requires -Version 5.1
-<#
-.SYNOPSIS
-    Remote installer for WhereZenZoo (winget-based).
-.DESCRIPTION
-    Ensures winget and Git are available, clones this repository (with the dotfiles
-    submodule) to ~\dotfiles, then hands off to bootstrap.ps1. Safe to re-run: an
-    existing clone is fast-forwarded instead of re-cloned.
-.EXAMPLE
-    irm https://raw.githubusercontent.com/user3301/WhereZenZoo/main/install.ps1 | iex
+#Requires -Version 7.0
+[CmdletBinding()]
+param(
+    [string]$Destination,
+    [switch]$BuildTools
+)
 
-    Downloads and runs the installer.
-.NOTES
-    Prerequisites: Developer Mode enabled (for unprivileged symlinks) and winget
-    (App Installer). Run from Windows PowerShell.
-#>
+# A child scope keeps preferences and helper variables out of an `irm ... | iex` caller.
+& {
+    [CmdletBinding()]
+    param(
+        [string]$Destination = (Join-Path $env:USERPROFILE 'dotfiles'),
+        [switch]$BuildTools
+    )
 
-$ErrorActionPreference = 'Stop'
-# Don't let PowerShell 7.4+ turn a benign non-zero winget/git exit into a
-# terminating error; we check $LASTEXITCODE / command presence ourselves.
-$PSNativeCommandUseErrorActionPreference = $false
+    $ErrorActionPreference = 'Stop'
+    $PSNativeCommandUseErrorActionPreference = $false
+    if ($PSVersionTable.PSVersion.Major -lt 7 -or -not $IsWindows -or
+        [Environment]::OSVersion.Version.Build -lt 22000) {
+        throw 'Run this installer in PowerShell 7 on Windows 11.'
+    }
+    if (-not (Get-Command winget -CommandType Application -ErrorAction Ignore)) {
+        throw 'WinGet is required. Install App Installer from the Microsoft Store, then rerun.'
+    }
+    if (-not (Get-Command git -CommandType Application -ErrorAction Ignore)) {
+        & winget install --id Git.Git --exact --source winget --silent `
+            --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Installing Git failed (winget exit $LASTEXITCODE)." }
+        $paths = @(
+            $env:PATH
+            [Environment]::GetEnvironmentVariable('Path', 'Machine')
+            [Environment]::GetEnvironmentVariable('Path', 'User')
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links')
+        )
+        $env:PATH = (($paths -join ';').Split(';', [StringSplitOptions]::RemoveEmptyEntries) |
+            Select-Object -Unique) -join ';'
+        if (-not (Get-Command git -CommandType Application -ErrorAction Ignore)) {
+            throw 'Git is installed but not on PATH. Open a new PowerShell 7 terminal and rerun.'
+        }
+    }
 
-$RepoUrl  = 'https://github.com/user3301/WhereZenZoo.git'
-$CloneDir = Join-Path $env:USERPROFILE 'dotfiles'
+    $repo = 'https://github.com/user3301/WhereZenZoo.git'
+    $Destination = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
+    if (Get-Item -LiteralPath $Destination -Force -ErrorAction Ignore) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Destination '.git'))) {
+            throw "'$Destination' already exists and is not a clone. Move it aside or choose -Destination."
+        }
+        $origin = & git -C $Destination remote get-url origin
+        if ($LASTEXITCODE -ne 0 -or $origin -notin @(
+                $repo, ($repo -replace '\.git$', ''), 'git@github.com:user3301/WhereZenZoo.git'
+            )) {
+            throw "'$Destination' is not a WhereZenZoo clone. No files were changed."
+        }
+        $branch = & git -C $Destination branch --show-current
+        if ($LASTEXITCODE -ne 0 -or $branch -ne 'main') {
+            throw "The clone must be on main for remote updates. Run its setup.ps1 directly to use another branch."
+        }
+        $status = & git -C $Destination status --porcelain
+        if ($LASTEXITCODE -ne 0) { throw "Cannot inspect '$Destination' (git exit $LASTEXITCODE)." }
+        if ($status) {
+            throw "The clone has uncommitted changes. Commit/stash them before updating, or run its setup.ps1 directly."
+        }
+        & git -C $Destination pull --ff-only origin main | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Updating the clone failed (git exit $LASTEXITCODE)." }
+    } else {
+        & git clone --branch main --single-branch $repo $Destination | Out-Host
+        if ($LASTEXITCODE -ne 0) { throw "Cloning failed (git exit $LASTEXITCODE)." }
+    }
 
-function Update-SessionPath {
-    $machine = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
-    $user    = [System.Environment]::GetEnvironmentVariable('Path', 'User')
-    $links   = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'
-    $parts   = @($machine, $user, $links) | Where-Object { $_ }
-    $env:PATH = ($parts -join ';')
-}
-
-Write-Host "[install] Running under PowerShell $($PSVersionTable.PSVersion)"
-
-if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-    throw 'winget is not available. Install "App Installer" from the Microsoft Store, then re-run.'
-}
-
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    Write-Host '[install] Installing Git with winget...'
-    winget install --id Git.Git --exact --source winget --silent `
-        --accept-package-agreements --accept-source-agreements --disable-interactivity
-    Update-SessionPath
-}
-
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw 'Git was installed but is not on PATH yet. Open a new terminal and re-run the installer.'
-}
-
-if (Test-Path (Join-Path $CloneDir '.git')) {
-    Write-Host "[install] Updating existing clone at $CloneDir..."
-    git -C $CloneDir pull --ff-only
-    git -C $CloneDir submodule update --init --recursive
-} elseif (Test-Path $CloneDir) {
-    throw "'$CloneDir' already exists but is not a git repository. Move it aside and re-run."
-} else {
-    Write-Host "[install] Cloning WhereZenZoo to $CloneDir..."
-    git clone --recurse-submodules $RepoUrl $CloneDir
-}
-
-$bootstrap = Join-Path $CloneDir 'bootstrap.ps1'
-Write-Host '[install] Handing off to bootstrap.ps1...'
-& powershell.exe -ExecutionPolicy Bypass -File $bootstrap
-$code = $LASTEXITCODE
-
-if ($code -ne 0) {
-    Write-Host "[install] Setup reported errors (exit $code). Check the log under $env:LOCALAPPDATA\WhereZenZoo, fix the cause, and re-run." -ForegroundColor Red
-} else {
-    Write-Host '[install] Done. Open a new terminal to load all changes.' -ForegroundColor Green
-}
-
-# Propagate the failure when run as a script file (powershell.exe -File / a
-# wrapper), so it can be detected. When run via `irm ... | iex` there is no
-# script path, and calling `exit` would close the user's interactive session
-# (and its scrollback) — the message above already surfaced the error.
-if ($MyInvocation.MyCommand.Path) { exit $code }
+    $setup = Join-Path $Destination 'setup.ps1'
+    if (-not (Test-Path -LiteralPath $setup -PathType Leaf)) { throw "Setup script missing: $setup" }
+    $arguments = @('-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $setup)
+    if ($BuildTools) { $arguments += '-BuildTools' }
+    & (Join-Path $PSHOME 'pwsh.exe') @arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Setup failed (exit $LASTEXITCODE). Fix the reported error and rerun; your terminal remains open."
+    }
+} @PSBoundParameters
