@@ -1,4 +1,10 @@
 #Requires -Version 7.0
+[CmdletBinding()]
+param(
+    [string]$Destination,
+    [switch]$BuildTools
+)
+
 # A child scope keeps preferences and helper variables out of an `irm ... | iex` caller.
 & {
     [CmdletBinding()]
@@ -69,4 +75,4 @@
     if ($LASTEXITCODE -ne 0) {
         throw "Setup failed (exit $LASTEXITCODE). Fix the reported error and rerun; your terminal remains open."
     }
-} @args
+} @PSBoundParameters

@@ -50,6 +50,8 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1           # restor
 Local setup uses your current files without fetching or requiring a clean
 worktree. For a different clone location, download `install.ps1`, inspect it, and
 run it with `-Destination 'C:\path\to\dotfiles'`. `-BuildTools` is also supported.
+Scripted calls can explicitly enable or disable that switch with
+`-BuildTools:$true` or `-BuildTools:$false`.
 
 ## Tools
 

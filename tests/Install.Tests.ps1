@@ -45,6 +45,14 @@ Describe 'Remote installer' {
         Get-Content -LiteralPath (Join-Path $clone 'setup-ran.txt') | Should -Be 'BuildTools=True'
     }
 
+    It 'forwards an explicit BuildTools value of <Value>' -ForEach @(
+        @{ Value = $false; Expected = 'BuildTools=False' }
+        @{ Value = $true; Expected = 'BuildTools=True' }
+    ) {
+        & $installer -Destination $clone -BuildTools:$Value
+        Get-Content -LiteralPath (Join-Path $clone 'setup-ran.txt') | Should -Be $Expected
+    }
+
     It 'fast-forwards a clean main checkout before running setup' {
         New-TestClone $clone
         & $installer -Destination $clone
@@ -152,6 +160,48 @@ Describe 'Remote installer' {
             Should -Invoke winget -Times 1 -ParameterFilter {
                 $args[0] -eq 'install' -and $args -contains 'Git.Git'
             }
+        } finally {
+            $env:PATH = $originalPath
+        }
+    }
+}
+
+Describe 'Installer invoked with pwsh -File' {
+    BeforeEach {
+        $clone = Join-Path $TestDrive ("clone {0}" -f [guid]::NewGuid().ToString('N'))
+        New-TestClone -Path $clone
+        $tools = Join-Path $TestDrive 'tools'
+        New-Item -ItemType Directory -Path $tools -Force | Out-Null
+        # Child processes cannot inherit Pester mocks; these shims block real Git/WinGet operations.
+        Set-Content -LiteralPath (Join-Path $tools 'git.cmd') -Value @'
+@echo off
+if not "%~1"=="-C" exit /b 99
+if "%~3"=="remote" (
+    echo https://github.com/user3301/WhereZenZoo.git
+    exit /b 0
+)
+if "%~3"=="branch" (
+    echo main
+    exit /b 0
+)
+if "%~3"=="status" exit /b 0
+if "%~3"=="pull" exit /b 0
+exit /b 99
+'@
+        Set-Content -LiteralPath (Join-Path $tools 'winget.cmd') -Value '@exit /b 99'
+    }
+
+    It 'passes BuildTools=<Value> and a destination with spaces to setup' -ForEach @(
+        @{ Value = $false; Expected = 'BuildTools=False' }
+        @{ Value = $true; Expected = 'BuildTools=True' }
+    ) {
+        $originalPath = $env:PATH
+        try {
+            $env:PATH = $tools + ';' + $originalPath
+            $output = & (Join-Path $PSHOME 'pwsh.exe') -NoLogo -NoProfile -File $installer `
+                -Destination $clone "-BuildTools:$Value" 2>&1
+            $LASTEXITCODE | Should -Be 0 -Because ($output -join [Environment]::NewLine)
+            Get-Content -LiteralPath (Join-Path $clone 'setup-ran.txt') | Should -Be $Expected
         } finally {
             $env:PATH = $originalPath
         }
