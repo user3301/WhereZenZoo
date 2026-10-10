@@ -103,9 +103,12 @@ See [`git\README.md`](git/README.md).
 
 Conflicting configs are backed up beside their destination as
 `<path>.wherezenzoo-backup` before replacement. Old linked directories are copied
-into real backup directories, so rollback does not depend on the removed
-submodule. An old linked profile is backed up as a loader to its original source
+into real backup directories, so rollback does not depend on the old source.
+An old linked profile is backed up as a loader to its original source
 so script-relative imports still work; keep that original source in place.
+If an existing link's target is missing, setup warns and backs up the broken
+link itself instead; uninstall restores that link, not its missing contents.
+Neovim is always installed from this repo's `nvim\` directory, never a submodule.
 Correct configs are skipped on repeat runs; the original backup is
 never overwritten. If a config was subsequently replaced and a backup already
 exists, setup stops and asks you to move the changed config aside.

@@ -198,16 +198,26 @@ function Install-Dotfile {
             $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
             while ($source.LinkType -in @('Junction', 'SymbolicLink')) {
                 if (-not $seen.Add($source.FullName)) { throw "Circular config link: $path" }
-                $source = Get-Item -LiteralPath (Get-LinkTarget $source) -Force -ErrorAction Stop
+                $target = Get-LinkTarget $source
+                try {
+                    $source = Get-Item -LiteralPath $target -Force -ErrorAction Stop
+                } catch [System.Management.Automation.ItemNotFoundException] {
+                    Write-Warning "Config link '$path' has a missing target '$target'. Preserving the broken link as '$backup'; rollback will restore the broken link, not its missing contents."
+                    $source = $null
+                    break
+                }
             }
-            if ($Config.Kind -eq 'Profile') {
+            if (-not $source) {
+                Move-Item -LiteralPath $path -Destination $backup -ErrorAction Stop
+            } elseif ($Config.Kind -eq 'Profile') {
                 # Preserve the script's own PSScriptRoot when restoring an old profile link.
                 [IO.File]::WriteAllText($backup, (Get-ProfileLoader $source.FullName -Previous))
+                Remove-ConfigLink $item
             } else {
-                # A directory backup must survive removal of its old submodule source.
+                # A directory backup must survive removal of its old source.
                 Copy-Item -LiteralPath $source.FullName -Destination $backup -Recurse -Force
+                Remove-ConfigLink $item
             }
-            Remove-ConfigLink $item
         } else {
             Move-Item -LiteralPath $path -Destination $backup
         }
