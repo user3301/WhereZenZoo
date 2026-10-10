@@ -62,6 +62,78 @@ Describe 'Live configuration and rollback' {
         Get-Content -LiteralPath (Join-Path $destination 'original.txt') | Should -Be 'old settings'
     }
 
+    It 'replaces a dangling junction and preserves it for rollback (chained=<Chained>)' -ForEach @(
+        @{ Chained = $false }
+        @{ Chained = $true }
+    ) {
+        $missing = Join-Path $caseRoot 'submodules\dotfiles\nvim\.config\nvim'
+        New-Item -ItemType Directory -Path $missing -Force | Out-Null
+        $oldTarget = $missing
+        if ($Chained) {
+            $oldTarget = Join-Path $caseRoot 'intermediate'
+            New-Item -ItemType Junction -Path $oldTarget -Target $missing | Out-Null
+        }
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        New-Item -ItemType Junction -Path $destination -Target $oldTarget | Out-Null
+        [IO.Directory]::Delete($missing, $false)
+        try {
+            Install-Dotfile $config -WarningVariable warnings
+            ($warnings -join ' ') | Should -Match 'missing'
+            Test-Dotfile $config | Should -BeTrue
+            Get-Content -LiteralPath (Join-Path $destination 'settings.txt') | Should -Be 'repo'
+            (Get-Item -LiteralPath "$destination.wherezenzoo-backup" -Force).Target | Should -Be $oldTarget
+            Install-Dotfile $config
+            (Get-Item -LiteralPath "$destination.wherezenzoo-backup" -Force).Target | Should -Be $oldTarget
+            Remove-Dotfile $config
+            (Get-Item -LiteralPath $destination -Force).Target | Should -Be $oldTarget
+            Get-Item -LiteralPath "$destination.wherezenzoo-backup" -Force -ErrorAction Ignore |
+                Should -BeNullOrEmpty
+            Test-Path -LiteralPath $missing | Should -BeFalse
+        } finally {
+            if ($Chained) { Remove-ConfigLink (Get-Item -LiteralPath $oldTarget -Force) }
+        }
+    }
+
+    It 'restores a dangling junction if creating the replacement fails' {
+        $missing = Join-Path $caseRoot 'missing'
+        New-Item -ItemType Directory -Path $missing | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        New-Item -ItemType Junction -Path $destination -Target $missing | Out-Null
+        [IO.Directory]::Delete($missing, $false)
+        Mock New-Item { throw 'simulated junction failure' } -ParameterFilter { $ItemType -eq 'Junction' }
+        { Install-Dotfile $config } | Should -Throw '*simulated junction failure*'
+        (Get-Item -LiteralPath $destination -Force).Target | Should -Be $missing
+        Get-Item -LiteralPath "$destination.wherezenzoo-backup" -Force -ErrorAction Ignore |
+            Should -BeNullOrEmpty
+    }
+
+    It 'does not overwrite an existing backup when the conflicting junction is dangling' {
+        $missing = Join-Path $caseRoot 'missing'
+        New-Item -ItemType Directory -Path $missing | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        New-Item -ItemType Junction -Path $destination -Target $missing | Out-Null
+        [IO.Directory]::Delete($missing, $false)
+        New-Item -ItemType Directory -Path "$destination.wherezenzoo-backup" | Out-Null
+        Set-Content -LiteralPath "$destination.wherezenzoo-backup\original.txt" -Value 'original'
+        { Install-Dotfile $config } | Should -Throw '*backup already exists*'
+        (Get-Item -LiteralPath $destination -Force).Target | Should -Be $missing
+        Get-Content -LiteralPath "$destination.wherezenzoo-backup\original.txt" | Should -Be 'original'
+    }
+
+    It 'does not treat access errors while resolving a link as a missing target' {
+        $oldTarget = Join-Path $caseRoot 'inaccessible'
+        New-Item -ItemType Directory -Path $oldTarget | Out-Null
+        New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+        New-Item -ItemType Junction -Path $destination -Target $oldTarget | Out-Null
+        Mock Get-Item { throw [UnauthorizedAccessException]::new('simulated access denied') } -ParameterFilter {
+            $LiteralPath -eq $oldTarget
+        }
+        { Install-Dotfile $config } | Should -Throw '*simulated access denied*'
+        (Get-Item -LiteralPath $destination -Force).Target | Should -Be $oldTarget
+        Get-Item -LiteralPath "$destination.wherezenzoo-backup" -Force -ErrorAction Ignore |
+            Should -BeNullOrEmpty
+    }
+
     It 'refuses to overwrite a backup after someone replaces a managed config' {
         New-Item -ItemType Directory -Path $destination -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $destination 'original.txt') -Value 'original'
@@ -126,7 +198,10 @@ Describe 'Live configuration and rollback' {
         Get-Content -LiteralPath $destination -Raw | Should -Match 'personal edit'
     }
 
-    It 'preserves script-relative imports when rolling back a linked profile' {
+    It 'preserves a linked profile for rollback (missing=<Missing>)' -ForEach @(
+        @{ Missing = $false }
+        @{ Missing = $true }
+    ) {
         $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
         $developerMode = Get-ItemPropertyValue -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' `
             -Name AllowDevelopmentWithoutDevLicense -ErrorAction Ignore
@@ -141,11 +216,25 @@ Describe 'Live configuration and rollback' {
         Set-Content -LiteralPath $config.Target -Value 'Get-Content -LiteralPath (Join-Path $PSScriptRoot ''settings.txt'')'
         New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
         New-Item -ItemType SymbolicLink -Path $destination -Target $config.Target | Out-Null
+        $oldTarget = $config.Target
+        if ($Missing) {
+            Remove-Item -LiteralPath $oldTarget
+            $config.Target = Join-Path $source 'new-profile.ps1'
+            Set-Content -LiteralPath $config.Target -Value '# repo profile'
+        }
+        Install-Dotfile $config
+        Test-Dotfile $config | Should -BeTrue
         Install-Dotfile $config
         Remove-Dotfile $config
-        (. $destination) | Should -Be 'repo'
-        { Remove-Dotfile $config } | Should -Throw '*changed*'
-        (. $destination) | Should -Be 'repo'
+        if ($Missing) {
+            (Get-Item -LiteralPath $destination -Force).LinkType | Should -Be 'SymbolicLink'
+            (Get-Item -LiteralPath $destination -Force).Target | Should -Be $oldTarget
+            Test-Path -LiteralPath $oldTarget | Should -BeFalse
+        } else {
+            (. $destination) | Should -Be 'repo'
+            { Remove-Dotfile $config } | Should -Throw '*changed*'
+            (. $destination) | Should -Be 'repo'
+        }
     }
 
     It 'restores the original if creating the replacement fails' {
@@ -188,6 +277,23 @@ Describe 'Configuration-only setup' {
         (Get-Item -LiteralPath (Split-Path $PROFILE.CurrentUserAllHosts)).LinkType | Should -BeNullOrEmpty
         Get-Content -LiteralPath $module | Should -Be '# existing module'
         Should -Invoke winget -Times 0
+    }
+
+    It 'completes configuration setup with a dangling legacy Neovim junction' {
+        $nvim = Join-Path $env:LOCALAPPDATA 'nvim'
+        $missing = Join-Path $env:USERPROFILE 'dotfiles\submodules\dotfiles\nvim\.config\nvim'
+        New-Item -ItemType Directory -Path $missing -Force | Out-Null
+        New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+        New-Item -ItemType Junction -Path $nvim -Target $missing | Out-Null
+        [IO.Directory]::Delete($missing, $false)
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+        (Get-LinkTarget (Get-Item -LiteralPath $nvim)) |
+            Should -Be ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\nvim')))
+        Test-Path -LiteralPath (Join-Path $nvim 'init.lua') | Should -BeTrue
+        (Get-Item -LiteralPath "$nvim.wherezenzoo-backup" -Force).Target | Should -Be $missing
+        Test-Path -LiteralPath $PROFILE.CurrentUserAllHosts | Should -BeTrue
+        Get-Content -LiteralPath $module | Should -Be '# existing module'
     }
 }
 
