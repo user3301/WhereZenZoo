@@ -1,7 +1,7 @@
 # WhereZenZoo
 
 Minimal dotfiles for **Windows 11 + PowerShell 7**. One repository owns the
-PowerShell, Neovim/LazyVim, and Git configs. No submodules, Make, PowerShell 5
+PowerShell, Neovim/LazyVim, Git, and Herdr configs. No submodules, Make, PowerShell 5
 compatibility layer, or automatic OneDrive/module relocation.
 
 ## Bootstrap
@@ -84,6 +84,7 @@ this minimal bootstrap.
 | `powershell\profile.ps1` | `$PROFILE.CurrentUserAllHosts` | Small dot-sourcing loader |
 | `nvim\` | `%LOCALAPPDATA%\nvim` | Directory junction |
 | `git\` | `%USERPROFILE%\.config\git` | Directory junction |
+| `herdr\config.toml` | `HERDR_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
 
 Edits in the repo are immediately reflected in linked configs. Reload PowerShell
 or Neovim as appropriate. Keep the clone in place while it is in use. Before
@@ -93,6 +94,23 @@ The PowerShell profile loads repo-relative aliases (`v`, `ll`, `copilot`) and
 caches zoxide initialization until its executable changes. `copilot` uses
 `agency copilot` when Agency is on PATH, otherwise the standalone GitHub Copilot
 CLI. Agency itself is not installed by this repo.
+
+The profile points Herdr at this clone's `herdr\config.toml`, replacing any
+inherited `HERDR_CONFIG_PATH`. Launch Herdr from PowerShell 7 after loading the
+profile; edits in Herdr's settings UI are saved directly to the repo file.
+Logs, sockets, plugins, and session state stay in `%APPDATA%\herdr`, outside Git.
+This uses Herdr's supported config-path override, not a file symlink requiring
+Developer Mode or a junction that would pull runtime data into the repository.
+Herdr itself is not installed by this repo.
+An existing `%APPDATA%\herdr\config.toml` is left untouched as a fallback for
+launches outside the managed PowerShell profile.
+
+After editing the config, run `herdr config check` and
+`herdr server reload-config`. Reopen Herdr for client-side settings to take
+effect. Setup installs the profile loader as usual; no persistent Windows
+environment variable is changed. Uninstall restores the previous profile, so
+fresh PowerShell terminals stop setting this override. Already-open shells and
+Herdr panes keep inherited environment values until restarted.
 
 The Git identity is retained. Commit signing is **opt-in**, configured in the
 ignored `git\config.local` after adding a signing key. Existing

@@ -31,6 +31,7 @@ Describe 'Copilot routing' {
 Describe 'Profile startup' {
     BeforeEach {
         $originalLocalAppData = $env:LOCALAPPDATA
+        $originalHerdrConfigPath = $env:HERDR_CONFIG_PATH
         $env:LOCALAPPDATA = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
         $zoxide = Join-Path $env:LOCALAPPDATA 'fake-zoxide.ps1'
@@ -48,6 +49,7 @@ $global:LASTEXITCODE = 0
 
     AfterEach {
         $env:LOCALAPPDATA = $originalLocalAppData
+        $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
         Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded -Scope Global -ErrorAction Ignore
     }
 
@@ -57,6 +59,19 @@ $global:LASTEXITCODE = 0
         (Get-Alias v).Definition | Should -Be 'nvim'
         (Get-Alias ll).Definition | Should -Be 'Get-ChildItem'
         $env:PYTHONIOENCODING | Should -Be 'utf-8'
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'uses this clone for Herdr settings instead of an inherited obsolete config path' {
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'zoxide' }
+        $env:HERDR_CONFIG_PATH = Join-Path $TestDrive 'old-submodule\config.toml'
+        Push-Location $TestDrive
+        try {
+            . (Join-Path $repoRoot 'powershell\profile.ps1')
+            $env:HERDR_CONFIG_PATH | Should -Be (Join-Path $repoRoot 'herdr\config.toml')
+        } finally {
+            Pop-Location
+        }
         Should -Invoke Write-Warning -Times 0
     }
 
