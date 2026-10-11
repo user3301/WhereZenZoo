@@ -1,0 +1,17 @@
+onboarding = false
+
+[terminal]
+default_shell = "pwsh.exe"
+
+[theme]
+name = "nord"
+auto_switch = false
+
+[ui]
+status_indicators = "symbols"
+
+[ui.sound]
+enabled = true
+
+[ui.toast]
+delivery = "terminal"

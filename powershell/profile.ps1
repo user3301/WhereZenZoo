@@ -1,6 +1,7 @@
 #Requires -Version 7.0
 
 $env:PYTHONIOENCODING = 'utf-8'
+$env:HERDR_CONFIG_PATH = Join-Path (Split-Path $PSScriptRoot) 'herdr\config.toml'
 . (Join-Path $PSScriptRoot 'aliases.ps1')
 
 $zoxideCommand = Get-Command zoxide -CommandType Application -ErrorAction Ignore
