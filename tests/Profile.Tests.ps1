@@ -42,15 +42,23 @@ $global:LASTEXITCODE = 0
 '@
         $global:ZoxideTestRuns = 0
         $global:ZoxideTestLoaded = $false
+        $mise = Join-Path $env:LOCALAPPDATA 'fake-mise.ps1'
+        Set-Content -LiteralPath $mise -Value @'
+if (($args -join '|') -ne 'activate|pwsh') { throw 'Unexpected mise arguments' }
+$global:LASTEXITCODE = 0
+'$global:MiseTestLoaded = $true'
+'@
+        $global:MiseTestLoaded = $false
         Set-Variable -Name HOME -Value $env:LOCALAPPDATA -Force
         Mock Get-Command { [pscustomobject]@{ Source = $zoxide } } -ParameterFilter { $Name -eq 'zoxide' }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'mise' }
         Mock Write-Warning {}
     }
 
     AfterEach {
         $env:LOCALAPPDATA = $originalLocalAppData
         $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
-        Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded -Scope Global -ErrorAction Ignore
+        Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded,MiseTestLoaded -Scope Global -ErrorAction Ignore
     }
 
     It 'loads repo-relative aliases and UTF-8 settings without optional tools' {
@@ -59,7 +67,35 @@ $global:LASTEXITCODE = 0
         (Get-Alias v).Definition | Should -Be 'nvim'
         (Get-Alias ll).Definition | Should -Be 'Get-ChildItem'
         $env:PYTHONIOENCODING | Should -Be 'utf-8'
+        $global:MiseTestLoaded | Should -BeFalse
         Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'activates mise in the current PowerShell session when installed' {
+        Mock Get-Command { [pscustomobject]@{ Source = $mise } } -ParameterFilter {
+            $Name -eq 'mise' -and $CommandType -eq 'Application'
+        }
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        $global:MiseTestLoaded | Should -BeTrue
+        $global:ZoxideTestLoaded | Should -BeTrue
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'warns about mise <Case> without breaking the remaining profile' -ForEach @(
+        @{ Case = 'command failure'; Body = '$global:LASTEXITCODE = 7; ''$global:MiseTestLoaded = $true''' }
+        @{ Case = 'empty output'; Body = '$global:LASTEXITCODE = 0' }
+        @{ Case = 'invalid PowerShell'; Body = '$global:LASTEXITCODE = 0; ''if (''' }
+        @{ Case = 'initializer failure'; Body = '$global:LASTEXITCODE = 0; ''throw "simulated initialization failure"''' }
+    ) {
+        Set-Content -LiteralPath $mise -Value $Body
+        Mock Get-Command { [pscustomobject]@{ Source = $mise } } -ParameterFilter {
+            $Name -eq 'mise' -and $CommandType -eq 'Application'
+        }
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        $global:MiseTestLoaded | Should -BeFalse
+        $global:ZoxideTestLoaded | Should -BeTrue
+        (Get-Alias v).Definition | Should -Be 'nvim'
+        Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*mise*' }
     }
 
     It 'uses this clone for Herdr settings instead of an inherited obsolete config path' {

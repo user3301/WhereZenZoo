@@ -1,8 +1,8 @@
 # WhereZenZoo
 
 Minimal dotfiles for **Windows 11 + PowerShell 7**. One repository owns the
-PowerShell, Neovim/LazyVim, Git, and Herdr configs. No submodules, Make, PowerShell 5
-compatibility layer, or automatic OneDrive/module relocation.
+PowerShell, Neovim/LazyVim, Git, mise, and Herdr configs. No submodules, Make,
+PowerShell 5 compatibility layer, or automatic OneDrive/module relocation.
 
 ## Bootstrap
 
@@ -65,6 +65,7 @@ Edit the small list in `config\packages.json` to change what is installed:
 | ripgrep | `BurntSushi.ripgrep.MSVC` |
 | lazygit | `JesseDuffield.lazygit` |
 | zoxide | `ajeetdsouza.zoxide` |
+| mise | `jdx.mise` |
 | GitHub CLI | `GitHub.cli` |
 | GitHub Copilot CLI | `GitHub.Copilot` |
 
@@ -74,8 +75,55 @@ Visual Studio 2022 C++ Build Tools is **optional** with `-BuildTools`, which
 installs the C++ workload and recommended Windows SDK. It can require a reboot.
 
 The retained LazyVim language extras need their own language runtimes and parser
-build tools; see [`nvim\README.md`](nvim/README.md). They are not all installed by
-this minimal bootstrap.
+build tools; see [`nvim\README.md`](nvim/README.md). mise manages the Rust, Go,
+and Node.js defaults below; .NET and Python are not included.
+
+## Programming languages with mise
+
+[`config\mise\config.toml`](config/mise/config.toml) selects the global defaults:
+
+| Language | Version request |
+| --- | --- |
+| Rust | `stable` |
+| Go | `latest` stable release |
+| Node.js | `22` (latest available 22.x release) |
+
+Setup installs mise and connects its configuration, but does **not** download or
+upgrade language toolchains. After setup, open a new PowerShell 7 terminal and run:
+
+```powershell
+mise install
+mise ls --current
+rustc --version
+cargo --version
+go version
+node --version
+```
+
+The profile activates mise when its executable is available, so selected tools
+are on PATH and project configs take effect as you change directories. Shell
+startup never installs or upgrades tools. Initialization failures produce a
+warning without preventing aliases or zoxide from loading.
+
+Run `mise upgrade` explicitly to update within these requests; Node.js stays on
+22.x. A project's `mise.toml` or `.tool-versions` overrides the global defaults.
+From a project directory, use `mise use go@<version>`, `mise use node@<version>`,
+or `mise use rust@<version>` to select and install its version. For example,
+`mise use node@22` follows 22.x; use a full version to pin an exact release.
+Run `mise install` after entering an existing project with missing tool versions.
+
+Rust uses rustup underneath. Reading project `rust-toolchain.toml` files is
+enabled so the global `stable` default does not override a project's toolchain.
+MSVC Rust builds need the C++ workload and Windows SDK; install them with
+`setup.ps1 -BuildTools` if they are missing. mise does not replace those build
+dependencies. See the official [Rust](https://mise.jdx.dev/lang/rust.html) and
+[Go](https://mise.jdx.dev/lang/go.html) guides for language-specific behavior.
+
+`mise use -g` edits the linked, tracked global config. Review those changes
+before committing, and keep credentials and machine-specific secrets out of it.
+Toolchains, rustup/Cargo state, and mise caches stay outside the repository.
+The existing PowerShell scripts still own dotfile deployment and rollback;
+`mise dotfiles` and `mise bootstrap` are not used.
 
 ## Live configs
 
@@ -84,6 +132,7 @@ this minimal bootstrap.
 | `powershell\profile.ps1` | `$PROFILE.CurrentUserAllHosts` | Small dot-sourcing loader |
 | `nvim\` | `%LOCALAPPDATA%\nvim` | Directory junction |
 | `git\` | `%USERPROFILE%\.config\git` | Directory junction |
+| `config\mise\` | `%USERPROFILE%\.config\mise` | Directory junction |
 | `herdr\config.toml` | `HERDR_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
 
 Edits in the repo are immediately reflected in linked configs. Reload PowerShell
@@ -136,6 +185,11 @@ backups. It stops if a managed path was edited or retargeted. It **never**
 uninstalls applications, purges Neovim data, removes the clone, or moves/deletes
 PowerShell modules. There is no remote uninstall one-liner or `-Purge` mode.
 Use `winget uninstall --id <package-id> --exact` to remove an application yourself.
+
+An existing `%USERPROFILE%\.config\mise` directory is backed up in full, not
+merged into the tracked defaults. Review its backup for settings you want to
+retain. Uninstall restores that directory and leaves downloaded language
+toolchains, Cargo data, and mise caches intact.
 
 The previous `~\powershell` link, host-specific profiles, old install records,
 and any pre-existing OneDrive redirection are not managed by this version.

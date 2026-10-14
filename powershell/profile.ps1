@@ -4,6 +4,19 @@ $env:PYTHONIOENCODING = 'utf-8'
 $env:HERDR_CONFIG_PATH = Join-Path (Split-Path $PSScriptRoot) 'herdr\config.toml'
 . (Join-Path $PSScriptRoot 'aliases.ps1')
 
+$miseCommand = Get-Command mise -CommandType Application -ErrorAction Ignore
+if ($miseCommand) {
+    try {
+        $init = & $miseCommand.Source activate pwsh
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace(($init -join ''))) {
+            throw "mise activate failed (exit $LASTEXITCODE)."
+        }
+        $init | Out-String | Invoke-Expression
+    } catch {
+        Write-Warning "mise initialization failed: $_"
+    }
+}
+
 $zoxideCommand = Get-Command zoxide -CommandType Application -ErrorAction Ignore
 if ($zoxideCommand) {
     try {

@@ -5,6 +5,7 @@
   { "id": "BurntSushi.ripgrep.MSVC", "command": "rg" },
   { "id": "JesseDuffield.lazygit", "command": "lazygit" },
   { "id": "ajeetdsouza.zoxide", "command": "zoxide" },
+  { "id": "jdx.mise", "command": "mise" },
   { "id": "GitHub.cli", "command": "gh" },
   { "id": "GitHub.Copilot", "command": "copilot" },
   {

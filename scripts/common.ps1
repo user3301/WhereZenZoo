@@ -97,6 +97,7 @@ function Get-Dotfiles {
     @(
         @{ Kind = 'Junction'; Path = Join-Path $LocalAppData 'nvim'; Target = Join-Path $RepoRoot 'nvim' }
         @{ Kind = 'Junction'; Path = Join-Path $HomePath '.config\git'; Target = Join-Path $RepoRoot 'git' }
+        @{ Kind = 'Junction'; Path = Join-Path $HomePath '.config\mise'; Target = Join-Path $RepoRoot 'config\mise' }
         @{ Kind = 'Profile'; Path = $ProfilePath; Target = Join-Path $RepoRoot 'powershell\profile.ps1' }
     )
 }

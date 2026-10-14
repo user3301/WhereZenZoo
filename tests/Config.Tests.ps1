@@ -248,6 +248,7 @@ Describe 'Live configuration and rollback' {
 
 Describe 'Configuration-only setup' {
     BeforeEach {
+        $uninstalled = $false
         $originalHome = $env:USERPROFILE
         $originalLocalAppData = $env:LOCALAPPDATA
         $env:USERPROFILE = Join-Path $TestDrive 'user'
@@ -262,7 +263,7 @@ Describe 'Configuration-only setup' {
     }
 
     AfterEach {
-        & (Join-Path $PSScriptRoot '..\uninstall.ps1')
+        if (-not $uninstalled) { & (Join-Path $PSScriptRoot '..\uninstall.ps1') }
         $env:USERPROFILE = $originalHome
         $env:LOCALAPPDATA = $originalLocalAppData
     }
@@ -277,6 +278,34 @@ Describe 'Configuration-only setup' {
         (Get-Item -LiteralPath (Split-Path $PROFILE.CurrentUserAllHosts)).LinkType | Should -BeNullOrEmpty
         Get-Content -LiteralPath $module | Should -Be '# existing module'
         Should -Invoke winget -Times 0
+    }
+
+    It 'connects mise language defaults and restores the previous global configuration' {
+        $miseConfig = Join-Path $env:USERPROFILE '.config\mise'
+        New-Item -ItemType Directory -Path $miseConfig -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $miseConfig 'config.toml') -Value '[tools]', 'node = "20"'
+        Set-Content -LiteralPath (Join-Path $miseConfig 'local-note.txt') -Value 'keep this'
+
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+
+        (Get-Item -LiteralPath $miseConfig).LinkType | Should -Be 'Junction'
+        (Get-LinkTarget (Get-Item -LiteralPath $miseConfig)) |
+            Should -Be ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\config\mise')))
+        $defaults = Get-Content -LiteralPath (Join-Path $miseConfig 'config.toml') -Raw
+        $defaults | Should -Match '(?m)^rust = "stable"\r?$'
+        $defaults | Should -Match '(?m)^go = "latest"\r?$'
+        $defaults | Should -Match '(?m)^node = "22"\r?$'
+        Get-Content -LiteralPath "$miseConfig.wherezenzoo-backup\config.toml" |
+            Should -Contain 'node = "20"'
+
+        & (Join-Path $PSScriptRoot '..\uninstall.ps1')
+        $uninstalled = $true
+
+        (Get-Item -LiteralPath $miseConfig).LinkType | Should -BeNullOrEmpty
+        Get-Content -LiteralPath (Join-Path $miseConfig 'config.toml') | Should -Contain 'node = "20"'
+        Get-Content -LiteralPath (Join-Path $miseConfig 'local-note.txt') | Should -Be 'keep this'
+        Test-Path -LiteralPath "$miseConfig.wherezenzoo-backup" | Should -BeFalse
     }
 
     It 'completes configuration setup with a dangling legacy Neovim junction' {

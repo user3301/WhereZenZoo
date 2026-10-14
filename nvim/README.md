@@ -20,8 +20,11 @@ Open `nvim` to let LazyVim download plugins. `:Lazy restore` uses `lazy-lock.jso
 
 Neovim 0.11.2+ and a Nerd Font in your terminal are recommended for the retained
 LazyVim setup. Language extras still need their own runtimes (for example .NET,
-Go, Node.js, or Python); bootstrap deliberately does not install those SDKs.
-Use `:checkhealth` and `:Mason` to inspect language-tool requirements.
+Go, Node.js, or Python). Run `mise install` after dotfiles setup to install the
+configured Rust, Go, and Node.js defaults, then launch Neovim from a mise-activated
+PowerShell 7 session. .NET and Python are not included. Mason still manages
+language servers. Use `:checkhealth` and `:Mason` to inspect language-tool
+requirements.
 
 Treesitter parser builds need a C compiler and the tree-sitter CLI. For MSVC,
 run `setup.ps1 -BuildTools` and launch Neovim from **Developer PowerShell for
