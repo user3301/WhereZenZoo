@@ -105,6 +105,11 @@ are on PATH and project configs take effect as you change directories. Shell
 startup never installs or upgrades tools. Initialization failures produce a
 warning without preventing aliases or zoxide from loading.
 
+Command-not-found auto-installation is disabled, so checking a missing command
+with `Get-Command` does not install its toolchain. Use `mise install` explicitly.
+After changing this setting, open a new PowerShell session so any previously
+registered auto-install hook is no longer present.
+
 Run `mise upgrade` explicitly to update within these requests; Node.js stays on
 22.x. A project's `mise.toml` or `.tool-versions` overrides the global defaults.
 From a project directory, use `mise use go@<version>`, `mise use node@<version>`,

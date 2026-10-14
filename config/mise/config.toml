@@ -5,3 +5,4 @@ node = "22"
 
 [settings]
 idiomatic_version_file_enable_tools = ["rust"]
+not_found_auto_install = false
