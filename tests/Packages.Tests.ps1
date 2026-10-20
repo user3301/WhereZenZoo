@@ -81,12 +81,14 @@ Describe 'WinGet package installation' {
         Should -Invoke Test-CppBuildTools -Times 2
     }
 
-    It 'installs mise by default while keeping Build Tools optional and avoiding Make' {
+    It 'installs mise and fzf by default while keeping Build Tools optional and avoiding Make' {
         $packages = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\packages.json') -Raw |
             ConvertFrom-Json -AsHashtable
-        @($packages | Where-Object { -not $_.optional }).Count | Should -Be 9
+        @($packages | Where-Object { -not $_.optional }).Count | Should -Be 10
         ($packages | Where-Object { $_.id -eq 'jdx.mise' -and -not $_.optional }).command |
             Should -Be 'mise'
+        ($packages | Where-Object { $_.id -eq 'junegunn.fzf' -and -not $_.optional }).command |
+            Should -Be 'fzf'
         @($packages | Where-Object { $_.optional }).Count | Should -Be 1
         ($packages | Where-Object { $_.optional }).id | Should -Be 'Microsoft.VisualStudio.2022.BuildTools'
         $packages.id | Should -Not -Contain 'ezwinports.make'

@@ -2,6 +2,7 @@
   { "id": "Git.Git", "command": "git" },
   { "id": "Neovim.Neovim", "command": "nvim" },
   { "id": "sharkdp.fd", "command": "fd" },
+  { "id": "junegunn.fzf", "command": "fzf" },
   { "id": "BurntSushi.ripgrep.MSVC", "command": "rg" },
   { "id": "JesseDuffield.lazygit", "command": "lazygit" },
   { "id": "ajeetdsouza.zoxide", "command": "zoxide" },
