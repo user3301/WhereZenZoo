@@ -62,6 +62,7 @@ Edit the small list in `config\packages.json` to change what is installed:
 | Git | `Git.Git` |
 | Neovim | `Neovim.Neovim` |
 | fd | `sharkdp.fd` |
+| fzf | `junegunn.fzf` |
 | ripgrep | `BurntSushi.ripgrep.MSVC` |
 | lazygit | `JesseDuffield.lazygit` |
 | zoxide | `ajeetdsouza.zoxide` |
