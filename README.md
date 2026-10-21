@@ -53,6 +53,12 @@ run it with `-Destination 'C:\path\to\dotfiles'`. `-BuildTools` is also supporte
 Scripted calls can explicitly enable or disable that switch with
 `-BuildTools:$true` or `-BuildTools:$false`.
 
+Changes made in a separate worktree do not update your regular clone or its
+live profile. To keep using that clone, first merge the changes, then pull them
+into the clone named in `$PROFILE.CurrentUserAllHosts` and run setup there.
+`-PackagesOnly` installs dependencies but does not change the profile loader;
+opening a new terminal still loads whichever clone the loader references.
+
 ## Tools
 
 Edit the small list in `config\packages.json` to change what is installed:
@@ -74,6 +80,13 @@ Existing applications on PATH or packages known to WinGet are skipped, not
 upgraded. Setup stops on package-manager errors; fix the error and rerun.
 Visual Studio 2022 C++ Build Tools is **optional** with `-BuildTools`, which
 installs the C++ workload and recommended Windows SDK. It can require a reboot.
+
+Setup also installs **posh-git 1.1.0** from PowerShell Gallery for the current
+user, using the version pinned in `config\powershell-modules.json`.
+An already available exact version is skipped; other installed versions are
+left alone. Setup uses PowerShell 7's bundled PowerShellGet (`Install-Module`)
+without changing repository trust or execution policy. Gallery/install errors
+stop setup. `-PackagesOnly` includes modules; `-SkipPackages` skips them.
 
 The retained LazyVim language extras need their own language runtimes and parser
 build tools; see [`nvim\README.md`](nvim/README.md). mise manages the Rust, Go,
@@ -150,6 +163,26 @@ caches zoxide initialization until its executable changes. `copilot` uses
 `agency copilot` when Agency is on PATH, otherwise the standalone GitHub Copilot
 CLI. Agency itself is not installed by this repo.
 
+When Git is available, the profile imports the pinned posh-git module before
+mise and zoxide wrap the prompt. Inside repositories (including subdirectories
+and worktrees), the prompt shows the branch and merge/rebase state. It never
+fetches from the network. Git command and branch-name tab completion is also
+enabled.
+
+File-status and stash scans are disabled to keep prompt overhead low: the
+prompt does **not** indicate modified, staged, untracked, or conflicted files,
+or upstream ahead/behind counts (posh-git obtains those from its status scan).
+Use `git status` for those details. Git metadata queries still add some overhead;
+this is not a zero-cost prompt. To enable file-status details for the current
+session, run `$GitPromptSettings.EnableFileStatus = $true`. Change the setting
+in `powershell\profile.ps1` to make that choice reproducible.
+
+Startup never installs modules or checks the gallery. If the pinned module is
+missing or cannot load, the profile warns with a setup command and continues
+loading aliases, mise, and zoxide. After changing the pin, run setup and open a
+new PowerShell 7 terminal; an existing custom prompt is not forcibly replaced.
+Uninstall restores the previous profile but leaves installed modules in place.
+
 The profile points Herdr at this clone's `herdr\config.toml`, replacing any
 inherited `HERDR_CONFIG_PATH`. Launch Herdr from PowerShell 7 after loading the
 profile; edits in Herdr's settings UI are saved directly to the repo file.
@@ -204,7 +237,7 @@ host-specific loader yourself if it loads the same profile a second time.
 
 ## Repository checks
 
-Pester 5+ is a development-only dependency; bootstrap does not install modules.
+Pester 5+ is a development-only dependency; bootstrap does not install Pester.
 If missing, install it with `Install-Module Pester -MinimumVersion 5.0 -Scope CurrentUser`.
 
 ```powershell

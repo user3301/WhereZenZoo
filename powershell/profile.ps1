@@ -4,6 +4,19 @@ $env:PYTHONIOENCODING = 'utf-8'
 $env:HERDR_CONFIG_PATH = Join-Path (Split-Path $PSScriptRoot) 'herdr\config.toml'
 . (Join-Path $PSScriptRoot 'aliases.ps1')
 
+if (Get-Command git -CommandType Application -ErrorAction Ignore) {
+    try {
+        $modules = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\powershell-modules.json') -Raw |
+            ConvertFrom-Json -AsHashtable
+        foreach ($module in $modules) { Import-Module @module -Global -ErrorAction Stop }
+        # Avoid scanning the working tree every time PowerShell draws the prompt.
+        $GitPromptSettings.EnableFileStatus = $false
+        $GitPromptSettings.EnableStashStatus = $false
+    } catch {
+        Write-Warning "Git prompt initialization failed: $_ Run this clone's setup.ps1 -PackagesOnly to install the pinned modules."
+    }
+}
+
 $miseCommand = Get-Command mise -CommandType Application -ErrorAction Ignore
 if ($miseCommand) {
     try {
