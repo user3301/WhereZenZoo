@@ -3,6 +3,89 @@ BeforeAll {
     function winget { throw 'Tests must not invoke the real WinGet executable' }
 }
 
+Describe 'PowerShell module installation' {
+    BeforeEach {
+        $script:moduleReady = $false
+        Mock Get-Module {
+            if ($script:moduleReady) { [pscustomobject]@{ Name = 'posh-git'; Version = [version]'1.1.0' } }
+        } -ParameterFilter { $ListAvailable -and $Name -eq 'posh-git' }
+        Mock Install-Module { $script:moduleReady = $true }
+    }
+
+    It 'pins posh-git in the shared setup and profile manifest' {
+        $modules = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\powershell-modules.json') -Raw |
+            ConvertFrom-Json -AsHashtable)
+        $modules.Count | Should -Be 1
+        $modules[0].name | Should -Be 'posh-git'
+        $modules[0].requiredVersion | Should -Be '1.1.0'
+    }
+
+    It 'skips the exact installed version without contacting the gallery' {
+        $script:moduleReady = $true
+        Install-PowerShellModule -Name posh-git -RequiredVersion 1.1.0
+        Should -Invoke Install-Module -Times 0
+    }
+
+    It 'installs the pinned version for the current user even if another version exists' {
+        Mock Get-Module {
+            [pscustomobject]@{ Name = 'posh-git'; Version = [version]'1.0.0' }
+            if ($script:moduleReady) { [pscustomobject]@{ Name = 'posh-git'; Version = [version]'1.1.0' } }
+        } -ParameterFilter { $ListAvailable -and $Name -eq 'posh-git' }
+        Install-PowerShellModule -Name posh-git -RequiredVersion 1.1.0
+        Should -Invoke Install-Module -Times 1 -ParameterFilter {
+            $Name -eq 'posh-git' -and $RequiredVersion -eq [version]'1.1.0' -and
+            $Scope -eq 'CurrentUser' -and $Repository -eq 'PSGallery' -and $Force -and $ErrorAction -eq 'Stop'
+        }
+    }
+
+    It 'propagates gallery and installation failures' {
+        Mock Install-Module { throw 'gallery unavailable' }
+        { Install-PowerShellModule -Name posh-git -RequiredVersion 1.1.0 } |
+            Should -Throw '*gallery unavailable*'
+    }
+
+    It 'does not report success when the installed module cannot be discovered' {
+        Mock Install-Module {}
+        { Install-PowerShellModule -Name posh-git -RequiredVersion 1.1.0 } |
+            Should -Throw '*not discoverable*'
+    }
+}
+
+Describe 'Package-only setup' {
+    BeforeEach {
+        $script:moduleReady = $false
+        Mock Get-Command { [pscustomobject]@{ Source = 'winget.exe' } } -ParameterFilter {
+            $Name -eq 'winget' -and $CommandType -eq 'Application'
+        }
+        Mock Get-Command { $null } -ParameterFilter {
+            $CommandType -eq 'Application' -and $Name -ne 'winget'
+        }
+        Mock winget { $global:LASTEXITCODE = 0 }
+        Mock Get-Module {
+            if ($script:moduleReady) { [pscustomobject]@{ Name = 'posh-git'; Version = [version]'1.1.0' } }
+        } -ParameterFilter { $ListAvailable -and $Name -eq 'posh-git' }
+        Mock Install-Module { $script:moduleReady = $true }
+        Mock Get-ExecutionPolicy { throw 'Package-only setup must not check profile policy' }
+        Mock New-Item { throw 'Package-only setup must not link configs' }
+    }
+
+    It 'installs the manifest module once across repeat runs without touching configs' {
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -PackagesOnly
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -PackagesOnly
+        Should -Invoke Install-Module -Times 1 -ParameterFilter {
+            $Name -eq 'posh-git' -and $RequiredVersion -eq [version]'1.1.0'
+        }
+        Should -Invoke Get-ExecutionPolicy -Times 0
+        Should -Invoke New-Item -Times 0
+    }
+
+    It 'stops setup if module installation fails' {
+        Mock Install-Module { throw 'gallery unavailable' }
+        { & (Join-Path $PSScriptRoot '..\setup.ps1') -PackagesOnly } |
+            Should -Throw '*gallery unavailable*'
+    }
+}
+
 Describe 'WinGet package installation' {
     BeforeEach {
         $package = @{ id = 'Example.Tool'; command = 'example-tool.exe' }

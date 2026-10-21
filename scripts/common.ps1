@@ -86,6 +86,25 @@ function Install-WinGetPackage {
     }
 }
 
+function Install-PowerShellModule {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][version]$RequiredVersion
+    )
+
+    if (Get-Module -ListAvailable -Name $Name | Where-Object Version -EQ $RequiredVersion) {
+        Write-Host "[skip] $Name $RequiredVersion is available"
+        return
+    }
+
+    Write-Host "[install] $Name $RequiredVersion (PSGallery, CurrentUser)"
+    Install-Module -Name $Name -RequiredVersion $RequiredVersion -Repository PSGallery `
+        -Scope CurrentUser -Force -ErrorAction Stop
+    if (-not (Get-Module -ListAvailable -Name $Name | Where-Object Version -EQ $RequiredVersion)) {
+        throw "$Name $RequiredVersion was installed but is not discoverable. Check PSModulePath and rerun setup."
+    }
+}
+
 function Get-Dotfiles {
     param(
         [Parameter(Mandatory)][string]$RepoRoot,

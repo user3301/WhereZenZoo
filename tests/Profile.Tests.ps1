@@ -52,6 +52,11 @@ $global:LASTEXITCODE = 0
         Set-Variable -Name HOME -Value $env:LOCALAPPDATA -Force
         Mock Get-Command { [pscustomobject]@{ Source = $zoxide } } -ParameterFilter { $Name -eq 'zoxide' }
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'mise' }
+        Mock Get-Command { [pscustomobject]@{ Source = 'git.exe' } } -ParameterFilter { $Name -eq 'git' }
+        Mock Import-Module {
+            $global:GitPromptSettings = @{ EnableFileStatus = $true; EnableStashStatus = $true }
+        } -ParameterFilter { $Name -eq 'posh-git' }
+        Mock Install-Module { throw 'Profile startup must not install modules' }
         Mock Write-Warning {}
     }
 
@@ -59,16 +64,49 @@ $global:LASTEXITCODE = 0
         $env:LOCALAPPDATA = $originalLocalAppData
         $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
         Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded,MiseTestLoaded -Scope Global -ErrorAction Ignore
+        Remove-Variable -Name GitPromptSettings -Scope Global -ErrorAction Ignore
     }
 
     It 'loads repo-relative aliases and UTF-8 settings without optional tools' {
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'zoxide' }
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
         . (Join-Path $repoRoot 'powershell\profile.ps1')
         (Get-Alias v).Definition | Should -Be 'nvim'
         (Get-Alias ll).Definition | Should -Be 'Get-ChildItem'
         $env:PYTHONIOENCODING | Should -Be 'utf-8'
         $global:MiseTestLoaded | Should -BeFalse
         Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'imports the pinned Git prompt globally without file or stash scans or downloads' {
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        Should -Invoke Import-Module -Times 1 -ParameterFilter {
+            $Name -eq 'posh-git' -and $RequiredVersion -eq '1.1.0' -and $Global -and $ErrorAction -eq 'Stop'
+        }
+        $GitPromptSettings.EnableFileStatus | Should -BeFalse
+        $GitPromptSettings.EnableStashStatus | Should -BeFalse
+        Should -Invoke Install-Module -Times 0
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'does not import posh-git when Git is missing' {
+        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        Should -Invoke Import-Module -Times 0 -ParameterFilter { $Name -eq 'posh-git' }
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'warns about missing or broken modules without breaking aliases, mise, or zoxide' {
+        Mock Import-Module { throw 'pinned module is missing' } -ParameterFilter { $Name -eq 'posh-git' }
+        Mock Get-Command { [pscustomobject]@{ Source = $mise } } -ParameterFilter { $Name -eq 'mise' }
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        $global:MiseTestLoaded | Should -BeTrue
+        $global:ZoxideTestLoaded | Should -BeTrue
+        (Get-Alias v).Definition | Should -Be 'nvim'
+        Should -Invoke Write-Warning -Times 1 -ParameterFilter {
+            $Message -like '*Git prompt*pinned module is missing*setup.ps1 -PackagesOnly*'
+        }
+        Should -Invoke Install-Module -Times 0
     }
 
     It 'activates mise in the current PowerShell session when installed' {

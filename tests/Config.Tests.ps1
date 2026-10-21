@@ -270,6 +270,7 @@ Describe 'Configuration-only setup' {
 
     It 'sets up twice and rolls back without winget or relocating the module directory' {
         Mock winget { throw 'Config-only setup must not call winget' }
+        Mock Install-Module { throw 'Config-only setup must not install modules' }
         & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
         & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
         (Get-Item -LiteralPath (Join-Path $env:LOCALAPPDATA 'nvim')).LinkType | Should -Be 'Junction'
@@ -278,6 +279,7 @@ Describe 'Configuration-only setup' {
         (Get-Item -LiteralPath (Split-Path $PROFILE.CurrentUserAllHosts)).LinkType | Should -BeNullOrEmpty
         Get-Content -LiteralPath $module | Should -Be '# existing module'
         Should -Invoke winget -Times 0
+        Should -Invoke Install-Module -Times 0
     }
 
     It 'connects mise language defaults and restores the previous global configuration' {
