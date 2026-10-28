@@ -282,6 +282,30 @@ Describe 'Configuration-only setup' {
         Should -Invoke Install-Module -Times 0
     }
 
+    It 'leaves the default GlazeWM config and runtime logs untouched through setup and uninstall' {
+        $glazewm = Join-Path $env:USERPROFILE '.glzr\glazewm'
+        $glazewmConfig = Join-Path $glazewm 'config.yaml'
+        $glazewmLog = Join-Path $glazewm 'errors.log'
+        New-Item -ItemType Directory -Path $glazewm -Force | Out-Null
+        Set-Content -LiteralPath $glazewmConfig -Value 'general: { focus_follows_cursor: true }'
+        Set-Content -LiteralPath $glazewmLog -Value 'existing log'
+        $originalConfigHash = (Get-FileHash -LiteralPath $glazewmConfig).Hash
+        $originalLogHash = (Get-FileHash -LiteralPath $glazewmLog).Hash
+
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+        & (Join-Path $PSScriptRoot '..\setup.ps1') -SkipPackages
+
+        (Get-Item -LiteralPath $glazewm).LinkType | Should -BeNullOrEmpty
+        (Get-FileHash -LiteralPath $glazewmConfig).Hash | Should -Be $originalConfigHash
+        (Get-FileHash -LiteralPath $glazewmLog).Hash | Should -Be $originalLogHash
+        Test-Path -LiteralPath "$glazewmConfig.wherezenzoo-backup" | Should -BeFalse
+
+        & (Join-Path $PSScriptRoot '..\uninstall.ps1')
+        $uninstalled = $true
+        (Get-FileHash -LiteralPath $glazewmConfig).Hash | Should -Be $originalConfigHash
+        (Get-FileHash -LiteralPath $glazewmLog).Hash | Should -Be $originalLogHash
+    }
+
     It 'connects mise language defaults and restores the previous global configuration' {
         $miseConfig = Join-Path $env:USERPROFILE '.config\mise'
         New-Item -ItemType Directory -Path $miseConfig -Force | Out-Null

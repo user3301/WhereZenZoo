@@ -2,6 +2,7 @@ BeforeAll {
     $repoRoot = Split-Path $PSScriptRoot
     function agency { throw 'Tests must not invoke the real Agency CLI' }
     function zoxide { throw 'Tests must not invoke the real zoxide binary' }
+    function glazewm { throw 'Profile startup must not launch the window manager' }
     . (Join-Path $repoRoot 'powershell\aliases.ps1')
 }
 
@@ -32,6 +33,7 @@ Describe 'Profile startup' {
     BeforeEach {
         $originalLocalAppData = $env:LOCALAPPDATA
         $originalHerdrConfigPath = $env:HERDR_CONFIG_PATH
+        $originalGlazewmConfigPath = $env:GLAZEWM_CONFIG_PATH
         $env:LOCALAPPDATA = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
         $zoxide = Join-Path $env:LOCALAPPDATA 'fake-zoxide.ps1'
@@ -57,12 +59,14 @@ $global:LASTEXITCODE = 0
             $global:GitPromptSettings = @{ EnableFileStatus = $true; EnableStashStatus = $true }
         } -ParameterFilter { $Name -eq 'posh-git' }
         Mock Install-Module { throw 'Profile startup must not install modules' }
+        Mock glazewm { throw 'Profile startup must not launch the window manager' }
         Mock Write-Warning {}
     }
 
     AfterEach {
         $env:LOCALAPPDATA = $originalLocalAppData
         $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
+        $env:GLAZEWM_CONFIG_PATH = $originalGlazewmConfigPath
         Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded,MiseTestLoaded -Scope Global -ErrorAction Ignore
         Remove-Variable -Name GitPromptSettings -Scope Global -ErrorAction Ignore
     }
@@ -136,16 +140,24 @@ $global:LASTEXITCODE = 0
         Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like '*mise*' }
     }
 
-    It 'uses this clone for Herdr settings instead of an inherited obsolete config path' {
+    It 'uses this clone for <Tool> settings instead of an inherited obsolete config path' -ForEach @(
+        @{ Tool = 'Herdr'; Variable = 'HERDR_CONFIG_PATH'; ConfigPath = 'herdr\config.toml' }
+        @{ Tool = 'GlazeWM'; Variable = 'GLAZEWM_CONFIG_PATH'; ConfigPath = 'glazewm\config.yaml' }
+    ) {
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'zoxide' }
-        $env:HERDR_CONFIG_PATH = Join-Path $TestDrive 'old-submodule\config.toml'
+        [Environment]::SetEnvironmentVariable($Variable, (Join-Path $TestDrive 'old-clone\config'), 'Process')
         Push-Location $TestDrive
         try {
             . (Join-Path $repoRoot 'powershell\profile.ps1')
-            $env:HERDR_CONFIG_PATH | Should -Be (Join-Path $repoRoot 'herdr\config.toml')
+            $expected = Join-Path $repoRoot $ConfigPath
+            [Environment]::GetEnvironmentVariable($Variable, 'Process') | Should -Be $expected
+            Test-Path -LiteralPath $expected -PathType Leaf | Should -BeTrue
+            . (Join-Path $repoRoot 'powershell\profile.ps1')
+            [Environment]::GetEnvironmentVariable($Variable, 'Process') | Should -Be $expected
         } finally {
             Pop-Location
         }
+        Should -Invoke glazewm -Times 0
         Should -Invoke Write-Warning -Times 0
     }
 

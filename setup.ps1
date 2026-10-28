@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Installs Windows tools and connects this clone's PowerShell, Neovim, Git, mise, and Herdr configs.
+    Installs Windows tools and connects this clone's PowerShell, Neovim, Git, mise, Herdr, and GlazeWM configs.
 .PARAMETER SkipPackages
     Configure dotfiles without installing WinGet packages or PowerShell modules.
 .PARAMETER PackagesOnly
