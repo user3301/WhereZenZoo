@@ -1,5 +1,5 @@
 general:
-  startup_commands: []
+  startup_commands: ['shell-exec zebar']
   shutdown_commands: []
   config_reload_commands: []
   focus_follows_cursor: false
@@ -13,7 +13,6 @@ general:
 gaps:
   scale_with_dpi: true
   inner_gap: '10px'
-  # No extra top gap: this config does not launch a status bar.
   outer_gap:
     top: '10px'
     right: '10px'

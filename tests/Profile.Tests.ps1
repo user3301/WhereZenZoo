@@ -29,6 +29,75 @@ Describe 'Copilot routing' {
     }
 }
 
+Describe 'GlazeWM routing' {
+    BeforeEach {
+        $originalGlazewmConfigPath = $env:GLAZEWM_CONFIG_PATH
+        $originalLastExitCode = $global:LASTEXITCODE
+        $env:GLAZEWM_CONFIG_PATH = Join-Path $TestDrive 'dotfiles with spaces\glazewm\config.yaml'
+        Mock Get-Command {
+            [pscustomobject]@{ Source = { @('native') + $args } }
+        } -ParameterFilter { $Name -eq 'glazewm' -and $CommandType -eq 'Application' }
+    }
+
+    AfterEach {
+        $env:GLAZEWM_CONFIG_PATH = $originalGlazewmConfigPath
+        $global:LASTEXITCODE = $originalLastExitCode
+    }
+
+    It 'passes the profile config explicitly for <Case> without depending on child environment inheritance' -ForEach @(
+        @{ Case = 'start'; Arguments = @('start'); Expected = @('start') }
+        @{ Case = 'bare invocation'; Arguments = @(); Expected = @('start') }
+        @{ Case = 'verbose start'; Arguments = @('start', '--verbose'); Expected = @('start', '--verbose') }
+    ) {
+        $expectedArguments = @('native') + $Expected + @('--config', $env:GLAZEWM_CONFIG_PATH)
+        (glazewm @Arguments) -join '|' | Should -Be ($expectedArguments -join '|')
+        Should -Invoke Get-Command -Times 1 -Exactly -ParameterFilter {
+            $Name -eq 'glazewm' -and $CommandType -eq 'Application'
+        }
+    }
+
+    It 'preserves an explicit config using <Case>' -ForEach @(
+        @{ Case = 'long option'; Arguments = @('start', '--config', 'C:\custom config\config.yaml') }
+        @{ Case = 'long equals option'; Arguments = @('start', '--config=C:\custom config\config.yaml') }
+        @{ Case = 'short option'; Arguments = @('start', '-c', 'C:\custom config\config.yaml') }
+        @{ Case = 'short attached value'; Arguments = @('start', '-cC:\custom config\config.yaml') }
+        @{ Case = 'combined short options'; Arguments = @('start', '-vc', 'C:\custom config\config.yaml') }
+    ) {
+        $env:GLAZEWM_CONFIG_PATH = $null
+        (glazewm @Arguments) -join '|' | Should -Be ((@('native') + $Arguments) -join '|')
+    }
+
+    It 'forwards <Case> unchanged without requiring a profile config' -ForEach @(
+        @{ Case = 'queries'; Arguments = @('query', 'app-metadata') }
+        @{ Case = 'reloads'; Arguments = @('command', 'wm-reload-config') }
+        @{ Case = 'subscriptions'; Arguments = @('sub', '--events', 'user_config_changed') }
+        @{ Case = 'help'; Arguments = @('--help') }
+        @{ Case = 'start help'; Arguments = @('start', '--help') }
+        @{ Case = 'short start help'; Arguments = @('start', '-h') }
+    ) {
+        $env:GLAZEWM_CONFIG_PATH = $null
+        (glazewm @Arguments) -join '|' | Should -Be ((@('native') + $Arguments) -join '|')
+    }
+
+    It 'surfaces an unset profile config instead of falling back to the default file' {
+        $env:GLAZEWM_CONFIG_PATH = $null
+        { glazewm start } | Should -Throw '*GLAZEWM_CONFIG_PATH*'
+    }
+
+    It 'surfaces a missing executable' {
+        Mock Get-Command { throw 'GlazeWM is not installed' } -ParameterFilter { $Name -eq 'glazewm' }
+        { glazewm start } | Should -Throw '*not installed*'
+    }
+
+    It 'preserves the native exit status' {
+        Mock Get-Command {
+            [pscustomobject]@{ Source = { $global:LASTEXITCODE = 7 } }
+        } -ParameterFilter { $Name -eq 'glazewm' }
+        glazewm command wm-reload-config
+        $LASTEXITCODE | Should -Be 7
+    }
+}
+
 Describe 'Profile startup' {
     BeforeEach {
         $originalLocalAppData = $env:LOCALAPPDATA
@@ -59,7 +128,9 @@ $global:LASTEXITCODE = 0
             $global:GitPromptSettings = @{ EnableFileStatus = $true; EnableStashStatus = $true }
         } -ParameterFilter { $Name -eq 'posh-git' }
         Mock Install-Module { throw 'Profile startup must not install modules' }
-        Mock glazewm { throw 'Profile startup must not launch the window manager' }
+        Mock Get-Command { throw 'Profile startup must not launch the window manager' } -ParameterFilter {
+            $Name -eq 'glazewm' -and $CommandType -eq 'Application'
+        }
         Mock Write-Warning {}
     }
 
@@ -157,7 +228,9 @@ $global:LASTEXITCODE = 0
         } finally {
             Pop-Location
         }
-        Should -Invoke glazewm -Times 0
+        Should -Invoke Get-Command -Times 0 -ParameterFilter {
+            $Name -eq 'glazewm' -and $CommandType -eq 'Application'
+        }
         Should -Invoke Write-Warning -Times 0
     }
 
