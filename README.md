@@ -97,12 +97,14 @@ and Node.js defaults below; .NET and Python are not included.
 
 [`glazewm\config.yaml`](glazewm/config.yaml) provides a portable GlazeWM 3.x
 configuration: nine workspaces without fixed monitor assignments, DPI-scaled
-10px gaps, and the familiar Alt-key bindings. Alt+Enter opens PowerShell 7.
+10px gaps, and the familiar Alt-key bindings. The top gap is 50px to reserve
+the 40px Zebar starter bar plus 10px of spacing. Alt+Enter opens PowerShell 7.
 GlazeWM starts Zebar through its `shell-exec zebar` startup hook. The `zebar`
 executable must be on PATH; the upstream GlazeWM installer may bundle it.
 There are no shutdown or reload commands, so this config does not stop Zebar
-on exit or relaunch it on config reload. Gap sizes are unchanged; if tiled
-windows overlap the bar, increase `gaps.outer_gap.top` to accommodate its height.
+on exit or relaunch it on config reload. If you customize the bar height, set
+`gaps.outer_gap.top` to that height plus your desired spacing; leave the other
+gaps small.
 
 Setup uses the same WinGet install/skip flow as the other tools, so your
 manually installed GlazeWM is not reinstalled or upgraded. `-PackagesOnly`
