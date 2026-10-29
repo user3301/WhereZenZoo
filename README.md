@@ -98,16 +98,24 @@ and Node.js defaults below; .NET and Python are not included.
 [`glazewm\config.yaml`](glazewm/config.yaml) provides a portable GlazeWM 3.x
 configuration: nine workspaces without fixed monitor assignments, DPI-scaled
 10px gaps, and the familiar Alt-key bindings. Alt+Enter opens PowerShell 7.
-There are no startup, shutdown, or reload commands, and no space reserved for
-Zebar. The upstream installer may bundle Zebar; this repo does not add a
-separate Zebar package, launch it, or terminate an existing instance.
+GlazeWM starts Zebar through its `shell-exec zebar` startup hook. The `zebar`
+executable must be on PATH; the upstream GlazeWM installer may bundle it.
+There are no shutdown or reload commands, so this config does not stop Zebar
+on exit or relaunch it on config reload. Gap sizes are unchanged; if tiled
+windows overlap the bar, increase `gaps.outer_gap.top` to accommodate its height.
 
 Setup uses the same WinGet install/skip flow as the other tools, so your
 manually installed GlazeWM is not reinstalled or upgraded. `-PackagesOnly`
 includes GlazeWM; `-SkipPackages` only connects configs. Neither setup nor
 PowerShell startup launches the window manager or enables Windows autostart.
 
-Like Herdr, the PowerShell profile sets a repo-relative `GLAZEWM_CONFIG_PATH`.
+The PowerShell profile sets a repo-relative `GLAZEWM_CONFIG_PATH` and aliases
+`glazewm` to a small launcher that passes that path as `--config` for
+`glazewm start` (or bare `glazewm`). The packaged Windows UIAccess launch can
+discard shell-local environment variables, so setting the variable alone
+is not sufficient. Other commands are forwarded unchanged, and an explicit
+`--config` or `-c` is preserved.
+
 After updating the clone your profile loads and running setup there, open a
 new PowerShell 7 terminal. Exit any existing GlazeWM instance via its tray menu
 before starting it with the new config:
@@ -124,9 +132,18 @@ exit GlazeWM first, then run this **from that worktree**:
 glazewm start --config (Join-Path $PWD 'glazewm\config.yaml')
 ```
 
-The command-line `--config` takes precedence over the environment variable.
+Calling `glazewm.exe` directly bypasses the PowerShell launcher. With an older
+profile or a direct executable invocation, pass the config explicitly:
+
+```powershell
+glazewm.exe start --config "$env:GLAZEWM_CONFIG_PATH"
+```
+
+Exit the existing instance first: `start` does not replace a running instance.
 Reload edits with `glazewm command wm-reload-config` or Alt+Shift+R; a reload
 uses the running instance's original config path, not the caller's new path.
+Startup hooks run only when GlazeWM starts, so restart it after enabling
+Zebar autostart; a config reload alone will not launch the bar.
 
 | Shortcut | Action |
 | --- | --- |
@@ -142,11 +159,11 @@ uses the running instance's original config path, not the caller's new path.
 The default `%USERPROFILE%\.glzr\glazewm\config.yaml` is left untouched.
 GlazeWM's `errors.log` stays in that same user directory, outside the repo;
 no directory junction, file symlink, or persistent Windows environment
-variable is created. Start-menu/login launches that do not inherit this
-PowerShell environment continue using their existing config. Uninstall
+variable is created. Start-menu/login launches bypass the PowerShell launcher
+and continue using their existing config. Uninstall
 restores the prior profile and leaves GlazeWM, its default config, and logs
 intact. Already-open shells and running GlazeWM instances must be restarted
-to stop inheriting the repo override.
+to stop using the repo override.
 
 ## Programming languages with mise
 
@@ -209,7 +226,7 @@ The existing PowerShell scripts still own dotfile deployment and rollback;
 | `git\` | `%USERPROFILE%\.config\git` | Directory junction |
 | `config\mise\` | `%USERPROFILE%\.config\mise` | Directory junction |
 | `herdr\config.toml` | `HERDR_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
-| `glazewm\config.yaml` | `GLAZEWM_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
+| `glazewm\config.yaml` | `--config` via `GLAZEWM_CONFIG_PATH` | Repo-relative path passed by the PowerShell `glazewm` launcher |
 
 Edits in the repo are immediately reflected in linked configs. Reload PowerShell
 or Neovim as appropriate. Keep the clone in place while it is in use. Before
