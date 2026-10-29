@@ -1,7 +1,7 @@
 # WhereZenZoo
 
 Minimal dotfiles for **Windows 11 + PowerShell 7**. One repository owns the
-PowerShell, Neovim/LazyVim, Git, mise, and Herdr configs. No submodules, Make,
+PowerShell, Neovim/LazyVim, Git, mise, Herdr, and GlazeWM configs. No submodules, Make,
 PowerShell 5 compatibility layer, or automatic OneDrive/module relocation.
 
 ## Bootstrap
@@ -75,6 +75,7 @@ Edit the small list in `config\packages.json` to change what is installed:
 | mise | `jdx.mise` |
 | GitHub CLI | `GitHub.cli` |
 | GitHub Copilot CLI | `GitHub.Copilot` |
+| GlazeWM | `glzr-io.glazewm` |
 
 Existing applications on PATH or packages known to WinGet are skipped, not
 upgraded. Setup stops on package-manager errors; fix the error and rerun.
@@ -91,6 +92,61 @@ stop setup. `-PackagesOnly` includes modules; `-SkipPackages` skips them.
 The retained LazyVim language extras need their own language runtimes and parser
 build tools; see [`nvim\README.md`](nvim/README.md). mise manages the Rust, Go,
 and Node.js defaults below; .NET and Python are not included.
+
+## GlazeWM
+
+[`glazewm\config.yaml`](glazewm/config.yaml) provides a portable GlazeWM 3.x
+configuration: nine workspaces without fixed monitor assignments, DPI-scaled
+10px gaps, and the familiar Alt-key bindings. Alt+Enter opens PowerShell 7.
+There are no startup, shutdown, or reload commands, and no space reserved for
+Zebar. The upstream installer may bundle Zebar; this repo does not add a
+separate Zebar package, launch it, or terminate an existing instance.
+
+Setup uses the same WinGet install/skip flow as the other tools, so your
+manually installed GlazeWM is not reinstalled or upgraded. `-PackagesOnly`
+includes GlazeWM; `-SkipPackages` only connects configs. Neither setup nor
+PowerShell startup launches the window manager or enables Windows autostart.
+
+Like Herdr, the PowerShell profile sets a repo-relative `GLAZEWM_CONFIG_PATH`.
+After updating the clone your profile loads and running setup there, open a
+new PowerShell 7 terminal. Exit any existing GlazeWM instance via its tray menu
+before starting it with the new config:
+
+```powershell
+$env:GLAZEWM_CONFIG_PATH  # Should point into the updated clone.
+glazewm start
+```
+
+To try an unmerged worktree's config without changing your live profile,
+exit GlazeWM first, then run this **from that worktree**:
+
+```powershell
+glazewm start --config (Join-Path $PWD 'glazewm\config.yaml')
+```
+
+The command-line `--config` takes precedence over the environment variable.
+Reload edits with `glazewm command wm-reload-config` or Alt+Shift+R; a reload
+uses the running instance's original config path, not the caller's new path.
+
+| Shortcut | Action |
+| --- | --- |
+| Alt+H/J/K/L or arrows | Focus a window |
+| Alt+Shift+H/J/K/L or arrows | Move a window |
+| Alt+1-9 / Alt+Shift+1-9 | Focus workspace / move window and follow |
+| Alt+R, then H/J/K/L or arrows | Resize; Enter/Escape exits resize mode |
+| Alt+Shift+Space / Alt+F | Toggle floating / fullscreen |
+| Alt+Enter | Open PowerShell 7 |
+| Alt+Shift+P | Pause/resume window management |
+| Alt+Shift+R / Alt+Shift+E | Reload config / exit GlazeWM |
+
+The default `%USERPROFILE%\.glzr\glazewm\config.yaml` is left untouched.
+GlazeWM's `errors.log` stays in that same user directory, outside the repo;
+no directory junction, file symlink, or persistent Windows environment
+variable is created. Start-menu/login launches that do not inherit this
+PowerShell environment continue using their existing config. Uninstall
+restores the prior profile and leaves GlazeWM, its default config, and logs
+intact. Already-open shells and running GlazeWM instances must be restarted
+to stop inheriting the repo override.
 
 ## Programming languages with mise
 
@@ -153,6 +209,7 @@ The existing PowerShell scripts still own dotfile deployment and rollback;
 | `git\` | `%USERPROFILE%\.config\git` | Directory junction |
 | `config\mise\` | `%USERPROFILE%\.config\mise` | Directory junction |
 | `herdr\config.toml` | `HERDR_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
+| `glazewm\config.yaml` | `GLAZEWM_CONFIG_PATH` | Repo-relative override set by the PowerShell profile |
 
 Edits in the repo are immediately reflected in linked configs. Reload PowerShell
 or Neovim as appropriate. Keep the clone in place while it is in use. Before

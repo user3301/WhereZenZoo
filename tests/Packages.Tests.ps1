@@ -108,6 +108,19 @@ Describe 'WinGet package installation' {
         Should -Invoke winget -Times 1
     }
 
+    It 'does not reinstall GlazeWM when its executable is already available' {
+        $packages = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\packages.json') -Raw |
+            ConvertFrom-Json -AsHashtable
+        $glazewm = @($packages | Where-Object id -EQ 'glzr-io.glazewm')
+        $glazewm.Count | Should -Be 1
+        Mock Get-Command { [pscustomobject]@{ Source = 'glazewm.exe' } } -ParameterFilter {
+            $Name -eq 'glazewm' -and $CommandType -eq 'Application'
+        }
+        Mock winget { throw 'An existing GlazeWM installation must not be reinstalled' }
+        Install-WinGetPackage $glazewm[0]
+        Should -Invoke winget -Times 0
+    }
+
     It 'installs only after the specific no-applications-found result' {
         Mock winget {
             if ($args[0] -eq 'list') { $global:LASTEXITCODE = -1978335212 }
@@ -164,14 +177,16 @@ Describe 'WinGet package installation' {
         Should -Invoke Test-CppBuildTools -Times 2
     }
 
-    It 'installs mise and fzf by default while keeping Build Tools optional and avoiding Make' {
+    It 'installs mise, fzf, and GlazeWM by default while keeping Build Tools optional and avoiding Make' {
         $packages = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\config\packages.json') -Raw |
             ConvertFrom-Json -AsHashtable
-        @($packages | Where-Object { -not $_.optional }).Count | Should -Be 10
+        @($packages | Where-Object { -not $_.optional }).Count | Should -Be 11
         ($packages | Where-Object { $_.id -eq 'jdx.mise' -and -not $_.optional }).command |
             Should -Be 'mise'
         ($packages | Where-Object { $_.id -eq 'junegunn.fzf' -and -not $_.optional }).command |
             Should -Be 'fzf'
+        ($packages | Where-Object { $_.id -eq 'glzr-io.glazewm' -and -not $_.optional }).command |
+            Should -Be 'glazewm'
         @($packages | Where-Object { $_.optional }).Count | Should -Be 1
         ($packages | Where-Object { $_.optional }).id | Should -Be 'Microsoft.VisualStudio.2022.BuildTools'
         $packages.id | Should -Not -Contain 'ezwinports.make'

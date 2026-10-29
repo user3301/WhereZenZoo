@@ -9,6 +9,7 @@
   { "id": "jdx.mise", "command": "mise" },
   { "id": "GitHub.cli", "command": "gh" },
   { "id": "GitHub.Copilot", "command": "copilot" },
+  { "id": "glzr-io.glazewm", "command": "glazewm" },
   {
     "id": "Microsoft.VisualStudio.2022.BuildTools",
     "optional": true,

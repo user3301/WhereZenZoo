@@ -2,6 +2,7 @@
 
 $env:PYTHONIOENCODING = 'utf-8'
 $env:HERDR_CONFIG_PATH = Join-Path (Split-Path $PSScriptRoot) 'herdr\config.toml'
+$env:GLAZEWM_CONFIG_PATH = Join-Path (Split-Path $PSScriptRoot) 'glazewm\config.yaml'
 . (Join-Path $PSScriptRoot 'aliases.ps1')
 
 if (Get-Command git -CommandType Application -ErrorAction Ignore) {
