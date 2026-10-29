@@ -14,7 +14,8 @@ gaps:
   scale_with_dpi: true
   inner_gap: '10px'
   outer_gap:
-    top: '10px'
+    # Reserve the 40px Zebar starter bar plus 10px of spacing.
+    top: '50px'
     right: '10px'
     bottom: '10px'
     left: '10px'
