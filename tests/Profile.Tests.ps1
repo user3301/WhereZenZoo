@@ -98,6 +98,128 @@ Describe 'GlazeWM routing' {
     }
 }
 
+Describe 'Git shortcuts' {
+    BeforeEach {
+        $previousLastExitCode = $global:LASTEXITCODE
+        Mock git {
+            $global:LASTEXITCODE = 0
+            'git|' + ($args -join '|')
+        }
+    }
+
+    AfterEach {
+        $global:LASTEXITCODE = $previousLastExitCode
+    }
+
+    It 'passes Git arguments as distinct values, including spaces and punctuation' {
+        (ga 'file with spaces.txt') | Should -Be 'git|add|file with spaces.txt'
+        (gca! --no-edit) | Should -Be 'git|commit|--verbose|--all|--amend|--no-edit'
+        (gdup --stat) | Should -Be 'git|diff|@{upstream}|--stat'
+        (gbdf topic) | Should -Be 'git|branch|--delete|--force|topic'
+        (gcbf topic main) | Should -Be 'git|checkout|-B|topic|main'
+    }
+
+    It 'passes log formats containing spaces as one argument' {
+        $format = '--pretty=%Cred%h%Creset -%C(auto)%d%Creset %s %Cgreen(%ar) %C(bold blue)<%an>%Creset'
+        (glol --max-count=3) | Should -Be "git|log|--graph|$format|--max-count=3"
+        (glp oneline) | Should -Be 'git|log|--pretty=oneline'
+        (glp oneline -2) | Should -Be 'git|log|--pretty=oneline|-2'
+    }
+
+    It 'preserves PowerShell built-ins instead of replacing their Git counterparts' {
+        $builtins = @{
+            gc = 'Get-Content'
+            gcm = 'Get-Command'
+            gcs = 'Get-PSCallStack'
+            gl = 'Get-Location'
+            gm = 'Get-Member'
+            gp = 'Get-ItemProperty'
+            gpv = 'Get-ItemPropertyValue'
+        }
+        foreach ($name in $builtins.Keys) {
+            (Get-Alias $name).Definition | Should -Be $builtins[$name]
+        }
+    }
+
+    It 'resolves a current branch without fetching or pushing' {
+        Mock git {
+            $global:LASTEXITCODE = 0
+            if ($args[0] -eq 'symbolic-ref') { return 'topic/test' }
+            'git|' + ($args -join '|')
+        }
+        (ggpush) | Should -Be 'git|push|origin|topic/test'
+        (ggp 'other-branch') | Should -Be 'git|push|origin|other-branch'
+        (gpsup) | Should -Be 'git|push|--set-upstream|origin|topic/test'
+    }
+
+    It 'does not guess a branch when no default branch can be found' {
+        Mock git {
+            if ($args[0] -eq 'rev-parse') { $global:LASTEXITCODE = 0 }
+            else { $global:LASTEXITCODE = 1 }
+        }
+        { gswm } | Should -Throw '*Cannot determine the main Git branch*'
+    }
+
+    It 'uses the remote HEAD when no conventional main branch exists' {
+        Mock git {
+            $global:LASTEXITCODE = 0
+            if ($args[0] -eq 'show-ref') { $global:LASTEXITCODE = 1 }
+            elseif ($args[0] -eq 'symbolic-ref') { return 'origin/release' }
+            elseif ($args[0] -eq 'switch') { return 'git|' + ($args -join '|') }
+        }
+        (gswm) | Should -Be 'git|switch|release'
+    }
+
+    It 'deletes only branches with gone upstreams, with and without force' {
+        Mock git {
+            $global:LASTEXITCODE = 0
+            if ($args[0] -eq 'for-each-ref') {
+                "topic/deleted`t[gone]"
+                "topic/active`t[ahead 1]"
+            } else {
+                'git|' + ($args -join '|')
+            }
+        }
+        (gbgd) | Should -Be 'git|branch|-d|topic/deleted'
+        (gbgdf) | Should -Be 'git|branch|-D|topic/deleted'
+    }
+
+    It 'does not push after a failed pull' {
+        Mock git {
+            if ($args[0] -eq 'push') { throw 'A failed pull must not be followed by a push.' }
+            $global:LASTEXITCODE = 1
+        }
+        ggpnp 'topic/test'
+        $LASTEXITCODE | Should -Be 1
+    }
+}
+
+Describe 'Gone branch detection' {
+    It 'recognizes a configured upstream whose remote branch no longer exists' {
+        if (-not (Get-Command git -CommandType Application -ErrorAction Ignore)) {
+            Set-ItResult -Skipped -Because 'Git is not installed'
+            return
+        }
+
+        $repo = Join-Path $TestDrive 'gone-branch-repo'
+        New-Item -ItemType Directory -Path $repo | Out-Null
+        & git.exe -C $repo init --quiet --initial-branch=main
+        & git.exe -C $repo -c user.name=AliasTest -c user.email=alias@example.invalid `
+            -c commit.gpgsign=false commit --quiet --allow-empty -m initial
+        & git.exe -C $repo branch topic
+        & git.exe -C $repo remote add origin 'https://example.invalid/repo.git'
+        & git.exe -C $repo config branch.topic.remote origin
+        & git.exe -C $repo config branch.topic.merge refs/heads/topic
+        Push-Location $repo
+        try {
+            @(Get-GitGoneBranches) | Should -Contain 'topic'
+            (gbg) | Should -Match 'topic.*: gone\]'
+        } finally {
+            Pop-Location
+        }
+    }
+}
+
 Describe 'Profile startup' {
     BeforeEach {
         $originalLocalAppData = $env:LOCALAPPDATA
@@ -148,6 +270,9 @@ $global:LASTEXITCODE = 0
         . (Join-Path $repoRoot 'powershell\profile.ps1')
         (Get-Alias v).Definition | Should -Be 'nvim'
         (Get-Alias ll).Definition | Should -Be 'Get-ChildItem'
+        (Get-Alias y).Definition | Should -Be 'yazi'
+        (Get-Alias g).Definition | Should -Be 'git'
+        (Get-Alias ga).Definition | Should -Be 'Invoke-GitShortcut'
         $env:PYTHONIOENCODING | Should -Be 'utf-8'
         $global:MiseTestLoaded | Should -BeFalse
         Should -Invoke Write-Warning -Times 0

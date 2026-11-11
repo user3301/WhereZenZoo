@@ -234,10 +234,23 @@ Edits in the repo are immediately reflected in linked configs. Reload PowerShell
 or Neovim as appropriate. Keep the clone in place while it is in use. Before
 moving it, run uninstall from the old location, move it, and rerun setup.
 
-The PowerShell profile loads repo-relative aliases (`v`, `ll`, `copilot`) and
-caches zoxide initialization until its executable changes. `copilot` uses
+The PowerShell profile loads repo-relative aliases (`v`, `ll`, `y`, `copilot`)
+and caches zoxide initialization until its executable changes. `y` runs
+`yazi`, which must be installed separately (it is not in the managed package
+list). `copilot` uses
 `agency copilot` when Agency is on PATH, otherwise the standalone GitHub Copilot
 CLI. Agency itself is not installed by this repo.
+
+[`powershell\git-aliases.ps1`](powershell/git-aliases.ps1) provides the
+[oh-my-zsh git plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)
+alias list in PowerShell, including branch-aware commands. Standalone zsh
+helpers such as `gbda`, `gccd`, and `gdv` are not included. Seven names already
+belong to PowerShell (`gc`, `gcm`, `gcs`, `gl`, `gm`, `gp`, `gpv`) and remain
+unchanged. PowerShell cannot distinguish names by case, so upstream `gbD`,
+`gbgD`, and `gcB` are instead `gbdf`, `gbgdf`, and `gcbf`. Branch-aware
+commands fail rather than guessing a missing main/develop branch. Some upstream
+shortcuts reset, clean, delete branches, or force-push; check their definitions
+before using them.
 
 When Git is available, the profile imports the pinned posh-git module before
 mise and zoxide wrap the prompt. Inside repositories (including subdirectories

@@ -2,6 +2,8 @@
 
 Set-Alias -Name v -Value nvim
 Set-Alias -Name ll -Value Get-ChildItem
+Set-Alias -Name y -Value yazi
+. (Join-Path $PSScriptRoot 'git-aliases.ps1')
 
 function Invoke-Copilot {
     $agency = Get-Command agency -CommandType Application -ErrorAction Ignore
