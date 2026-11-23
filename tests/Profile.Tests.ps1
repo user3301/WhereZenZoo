@@ -220,8 +220,141 @@ Describe 'Gone branch detection' {
     }
 }
 
+Describe 'Branch-only prompt' {
+    BeforeEach {
+        $originalPrompt = $function:prompt
+        $originalGitPromptBranch = Get-Item Function:\global:Get-GitPromptBranch -ErrorAction Ignore
+        $originalPromptInstalled = Get-Variable WhereZenZooPromptInstalled -Scope Global -ErrorAction Ignore
+        Remove-Variable WhereZenZooPromptInstalled -Scope Global -ErrorAction Ignore
+        $originalLastExitCode = $global:LASTEXITCODE
+        $originalHerdrConfigPath = $env:HERDR_CONFIG_PATH
+        $originalGlazewmConfigPath = $env:GLAZEWM_CONFIG_PATH
+        $caseRoot = Join-Path $TestDrive ([guid]::NewGuid().ToString('N'))
+        $repo = Join-Path $caseRoot 'repo [test]'
+        $head = Join-Path $repo '.git\HEAD'
+        New-Item -ItemType Directory -Path (Split-Path $head) -Force | Out-Null
+        Set-Content -LiteralPath $head -Value 'ref: refs/heads/topic/test'
+        Push-Location -LiteralPath $repo
+        Mock git { throw 'The branch prompt must not spawn Git' }
+        Mock Get-Command { $null } -ParameterFilter { $Name -in @('git', 'mise', 'zoxide') }
+        Mock Import-Module { throw 'The branch prompt must not import posh-git' } -ParameterFilter {
+            $Name -eq 'posh-git'
+        }
+        Mock Write-Warning {}
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+    }
+
+    AfterEach {
+        Pop-Location
+        Set-Item Function:\global:prompt -Value $originalPrompt
+        $global:LASTEXITCODE = $originalLastExitCode
+        $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
+        $env:GLAZEWM_CONFIG_PATH = $originalGlazewmConfigPath
+        Remove-Variable WhereZenZooPromptInstalled -Scope Global -ErrorAction Ignore
+        if ($originalPromptInstalled) {
+            Set-Variable WhereZenZooPromptInstalled -Scope Global -Value $originalPromptInstalled.Value
+        }
+        if ($originalGitPromptBranch) {
+            Set-Item Function:\global:Get-GitPromptBranch -Value $originalGitPromptBranch.ScriptBlock
+        } else {
+            Remove-Item Function:\global:Get-GitPromptBranch -ErrorAction Ignore
+        }
+    }
+
+    It 'reads an unborn branch from subdirectories and refreshes after a branch switch' {
+        $nested = Join-Path $repo 'src\components'
+        New-Item -ItemType Directory -Path $nested -Force | Out-Null
+        Set-Location -LiteralPath $nested
+        (prompt) | Should -Be "PS $PWD [topic/test]> "
+        Set-Content -LiteralPath $head -Value 'ref: refs/heads/other/topic'
+        (prompt) | Should -Be "PS $PWD [other/topic]> "
+        Should -Invoke git -Times 0
+        Should -Invoke Import-Module -Times 0 -ParameterFilter { $Name -eq 'posh-git' }
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'follows the <Kind> worktree gitdir pointer instead of the parent repository' -ForEach @(
+        @{ Kind = 'relative' }
+        @{ Kind = 'absolute' }
+    ) {
+        $worktree = Join-Path $repo 'nested worktree'
+        $gitDir = Join-Path $repo '.git\worktrees\nested'
+        New-Item -ItemType Directory -Path $worktree, $gitDir -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $gitDir 'HEAD') -Value 'ref: refs/heads/worktree/topic'
+        $target = if ($Kind -eq 'relative') { '..\.git\worktrees\nested' } else { $gitDir }
+        Set-Content -LiteralPath (Join-Path $worktree '.git') -Value "gitdir: $target"
+        $nested = Join-Path $worktree 'src'
+        New-Item -ItemType Directory -Path $nested | Out-Null
+        Set-Location -LiteralPath $nested
+        (prompt) | Should -Be "PS $PWD [worktree/topic]> "
+        Should -Invoke git -Times 0
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'labels a detached <Length>-character HEAD without treating it as a branch' -ForEach @(
+        @{ Length = 40 }
+        @{ Length = 64 }
+    ) {
+        Set-Content -LiteralPath $head -Value ('a' * $Length)
+        (prompt) | Should -Be "PS $PWD [detached:aaaaaaa]> "
+    }
+
+    It 'uses a plain prompt outside repositories and in non-filesystem providers' {
+        Set-Location -LiteralPath $caseRoot
+        (prompt) | Should -Be "PS $PWD> "
+        Set-Location Env:\
+        (prompt) | Should -Be "PS $PWD> "
+        Should -Invoke Write-Warning -Times 0
+    }
+
+    It 'preserves the last native exit code and failed command status' {
+        $global:LASTEXITCODE = 7
+        Write-Error 'expected failure' -ErrorAction Ignore
+        $text = prompt
+        $succeeded = $?
+        $global:LASTEXITCODE | Should -Be 7
+        $succeeded | Should -BeFalse
+        $text | Should -Be "PS $PWD [topic/test]> "
+        $text = prompt
+        $succeeded = $?
+        $succeeded | Should -BeTrue
+    }
+
+    It 'warns about corrupt Git metadata while keeping the prompt usable' {
+        Set-Content -LiteralPath $head -Value 'not a Git HEAD'
+        (prompt) | Should -Be "PS $PWD> "
+        Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like 'Git prompt failed:*' }
+    }
+
+    It 'warns when HEAD is unreadable without changing the native exit code' {
+        $stream = [IO.File]::Open($head, 'Open', 'ReadWrite', 'None')
+        try {
+            $global:LASTEXITCODE = 7
+            (prompt) | Should -Be "PS $PWD> "
+            $global:LASTEXITCODE | Should -Be 7
+            Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like 'Git prompt failed:*' }
+        } finally {
+            $stream.Dispose()
+        }
+    }
+
+    It 'does not fall back to the enclosing repository when a gitdir pointer is invalid' {
+        $nested = Join-Path $repo 'broken-worktree'
+        New-Item -ItemType Directory -Path $nested | Out-Null
+        Set-Content -LiteralPath (Join-Path $nested '.git') -Value 'not a gitdir pointer'
+        Set-Location -LiteralPath $nested
+        (prompt) | Should -Be "PS $PWD> "
+        Should -Invoke Write-Warning -Times 1 -ParameterFilter { $Message -like 'Git prompt failed:*' }
+    }
+}
+
 Describe 'Profile startup' {
     BeforeEach {
+        $originalPrompt = $function:prompt
+        $originalGitPromptBranch = Get-Item Function:\global:Get-GitPromptBranch -ErrorAction Ignore
+        $originalPromptInstalled = Get-Variable WhereZenZooPromptInstalled -Scope Global -ErrorAction Ignore
+        Remove-Variable WhereZenZooPromptInstalled -Scope Global -ErrorAction Ignore
+        $originalLastExitCode = $global:LASTEXITCODE
         $originalLocalAppData = $env:LOCALAPPDATA
         $originalHerdrConfigPath = $env:HERDR_CONFIG_PATH
         $originalGlazewmConfigPath = $env:GLAZEWM_CONFIG_PATH
@@ -246,9 +379,9 @@ $global:LASTEXITCODE = 0
         Mock Get-Command { [pscustomobject]@{ Source = $zoxide } } -ParameterFilter { $Name -eq 'zoxide' }
         Mock Get-Command { $null } -ParameterFilter { $Name -eq 'mise' }
         Mock Get-Command { [pscustomobject]@{ Source = 'git.exe' } } -ParameterFilter { $Name -eq 'git' }
-        Mock Import-Module {
-            $global:GitPromptSettings = @{ EnableFileStatus = $true; EnableStashStatus = $true }
-        } -ParameterFilter { $Name -eq 'posh-git' }
+        Mock Import-Module { throw 'Profile startup must not import posh-git' } -ParameterFilter {
+            $Name -eq 'posh-git'
+        }
         Mock Install-Module { throw 'Profile startup must not install modules' }
         Mock Get-Command { throw 'Profile startup must not launch the window manager' } -ParameterFilter {
             $Name -eq 'glazewm' -and $CommandType -eq 'Application'
@@ -257,11 +390,21 @@ $global:LASTEXITCODE = 0
     }
 
     AfterEach {
+        Set-Item Function:\global:prompt -Value $originalPrompt
+        $global:LASTEXITCODE = $originalLastExitCode
         $env:LOCALAPPDATA = $originalLocalAppData
         $env:HERDR_CONFIG_PATH = $originalHerdrConfigPath
         $env:GLAZEWM_CONFIG_PATH = $originalGlazewmConfigPath
         Remove-Variable -Name ZoxideTestRuns,ZoxideTestLoaded,MiseTestLoaded -Scope Global -ErrorAction Ignore
-        Remove-Variable -Name GitPromptSettings -Scope Global -ErrorAction Ignore
+        Remove-Variable -Name WhereZenZooPromptInstalled,MiseBasePrompt,ZoxideBasePrompt -Scope Global -ErrorAction Ignore
+        if ($originalPromptInstalled) {
+            Set-Variable WhereZenZooPromptInstalled -Scope Global -Value $originalPromptInstalled.Value
+        }
+        if ($originalGitPromptBranch) {
+            Set-Item Function:\global:Get-GitPromptBranch -Value $originalGitPromptBranch.ScriptBlock
+        } else {
+            Remove-Item Function:\global:Get-GitPromptBranch -ErrorAction Ignore
+        }
     }
 
     It 'loads repo-relative aliases and UTF-8 settings without optional tools' {
@@ -278,34 +421,43 @@ $global:LASTEXITCODE = 0
         Should -Invoke Write-Warning -Times 0
     }
 
-    It 'imports the pinned Git prompt globally without file or stash scans or downloads' {
-        . (Join-Path $repoRoot 'powershell\profile.ps1')
-        Should -Invoke Import-Module -Times 1 -ParameterFilter {
-            $Name -eq 'posh-git' -and $RequiredVersion -eq '1.1.0' -and $Global -and $ErrorAction -eq 'Stop'
+    It 'loads the branch prompt without importing or installing modules' {
+        $repo = Join-Path $TestDrive 'profile-prompt-repo'
+        New-Item -ItemType Directory -Path (Join-Path $repo '.git') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $repo '.git\HEAD') -Value 'ref: refs/heads/test'
+        Push-Location -LiteralPath $repo
+        try {
+            . (Join-Path $repoRoot 'powershell\profile.ps1')
+            (prompt) | Should -Be "PS $PWD [test]> "
+        } finally {
+            Pop-Location
         }
-        $GitPromptSettings.EnableFileStatus | Should -BeFalse
-        $GitPromptSettings.EnableStashStatus | Should -BeFalse
+        Should -Invoke Import-Module -Times 0 -ParameterFilter { $Name -eq 'posh-git' }
         Should -Invoke Install-Module -Times 0
         Should -Invoke Write-Warning -Times 0
     }
 
-    It 'does not import posh-git when Git is missing' {
-        Mock Get-Command { $null } -ParameterFilter { $Name -eq 'git' }
-        . (Join-Path $repoRoot 'powershell\profile.ps1')
-        Should -Invoke Import-Module -Times 0 -ParameterFilter { $Name -eq 'posh-git' }
-        Should -Invoke Write-Warning -Times 0
-    }
-
-    It 'warns about missing or broken modules without breaking aliases, mise, or zoxide' {
-        Mock Import-Module { throw 'pinned module is missing' } -ParameterFilter { $Name -eq 'posh-git' }
+    It 'keeps mise and zoxide prompt wrappers when the profile is loaded again' {
+        Set-Content -LiteralPath $mise -Value @'
+$global:LASTEXITCODE = 0
+'$global:MiseTestLoaded = $true'
+'if (-not $global:MiseBasePrompt) { $global:MiseBasePrompt = $function:prompt; function global:prompt { "mise|" + (& $global:MiseBasePrompt) } }'
+'@
+        Set-Content -LiteralPath $zoxide -Value @'
+$global:ZoxideTestRuns++
+$global:LASTEXITCODE = 0
+'$global:ZoxideTestLoaded = $true'
+'if (-not $global:ZoxideBasePrompt) { $global:ZoxideBasePrompt = $function:prompt; function global:prompt { "zoxide|" + (& $global:ZoxideBasePrompt) } }'
+'@
         Mock Get-Command { [pscustomobject]@{ Source = $mise } } -ParameterFilter { $Name -eq 'mise' }
         . (Join-Path $repoRoot 'powershell\profile.ps1')
         $global:MiseTestLoaded | Should -BeTrue
         $global:ZoxideTestLoaded | Should -BeTrue
         (Get-Alias v).Definition | Should -Be 'nvim'
-        Should -Invoke Write-Warning -Times 1 -ParameterFilter {
-            $Message -like '*Git prompt*pinned module is missing*setup.ps1 -PackagesOnly*'
-        }
+        (prompt) | Should -Match '^zoxide\|mise\|PS '
+        . (Join-Path $repoRoot 'powershell\profile.ps1')
+        (prompt) | Should -Match '^zoxide\|mise\|PS '
+        Should -Invoke Write-Warning -Times 0
         Should -Invoke Install-Module -Times 0
     }
 

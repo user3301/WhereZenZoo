@@ -2,7 +2,13 @@
 rust = "stable"
 go = "latest"
 node = "22"
+python = "3.11"
+uv = "latest"
+
+[env]
+UV_PYTHON_PREFERENCE = "only-system"
+UV_PYTHON_DOWNLOADS = "never"
 
 [settings]
-idiomatic_version_file_enable_tools = ["rust"]
+idiomatic_version_file_enable_tools = ["rust", "python"]
 not_found_auto_install = false

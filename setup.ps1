@@ -3,7 +3,7 @@
 .SYNOPSIS
     Installs Windows tools and connects this clone's PowerShell, Neovim, Git, mise, Herdr, and GlazeWM configs.
 .PARAMETER SkipPackages
-    Configure dotfiles without installing WinGet packages or PowerShell modules.
+    Configure dotfiles without installing WinGet packages.
 .PARAMETER PackagesOnly
     Install tools without changing configuration.
 .PARAMETER BuildTools
@@ -43,9 +43,6 @@ if (-not $SkipPackages) {
     foreach ($package in $packages) {
         if (-not $package.optional -or $BuildTools) { Install-WinGetPackage $package }
     }
-    $modules = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config\powershell-modules.json') -Raw |
-        ConvertFrom-Json -AsHashtable
-    foreach ($module in $modules) { Install-PowerShellModule @module }
 }
 
 if (-not $PackagesOnly) {

@@ -82,16 +82,12 @@ upgraded. Setup stops on package-manager errors; fix the error and rerun.
 Visual Studio 2022 C++ Build Tools is **optional** with `-BuildTools`, which
 installs the C++ workload and recommended Windows SDK. It can require a reboot.
 
-Setup also installs **posh-git 1.1.0** from PowerShell Gallery for the current
-user, using the version pinned in `config\powershell-modules.json`.
-An already available exact version is skipped; other installed versions are
-left alone. Setup uses PowerShell 7's bundled PowerShellGet (`Install-Module`)
-without changing repository trust or execution policy. Gallery/install errors
-stop setup. `-PackagesOnly` includes modules; `-SkipPackages` skips them.
+Setup installs applications only. The profile has no third-party PowerShell
+module dependency and does not need PowerShell Gallery access.
 
 The retained LazyVim language extras need their own language runtimes and parser
 build tools; see [`nvim\README.md`](nvim/README.md). mise manages the Rust, Go,
-and Node.js defaults below; .NET and Python are not included.
+Node.js, Python, and uv defaults below; .NET is not included.
 
 ## GlazeWM
 
@@ -171,14 +167,16 @@ to stop using the repo override.
 
 [`config\mise\config.toml`](config/mise/config.toml) selects the global defaults:
 
-| Language | Version request |
+| Tool | Version request |
 | --- | --- |
 | Rust | `stable` |
 | Go | `latest` stable release |
 | Node.js | `22` (latest available 22.x release) |
+| Python | `3.11` (latest available 3.11.x release) |
+| uv | `latest` stable release |
 
 Setup installs mise and connects its configuration, but does **not** download or
-upgrade language toolchains. After setup, open a new PowerShell 7 terminal and run:
+upgrade its managed tools. After setup, open a new PowerShell 7 terminal and run:
 
 ```powershell
 mise install
@@ -187,6 +185,8 @@ rustc --version
 cargo --version
 go version
 node --version
+python --version
+uv --version
 ```
 
 The profile activates mise when its executable is available, so selected tools
@@ -200,11 +200,32 @@ After changing this setting, open a new PowerShell session so any previously
 registered auto-install hook is no longer present.
 
 Run `mise upgrade` explicitly to update within these requests; Node.js stays on
-22.x. A project's `mise.toml` or `.tool-versions` overrides the global defaults.
+22.x and Python stays on 3.11.x. A project's `mise.toml` or `.tool-versions`
+overrides the global defaults.
 From a project directory, use `mise use go@<version>`, `mise use node@<version>`,
-or `mise use rust@<version>` to select and install its version. For example,
-`mise use node@22` follows 22.x; use a full version to pin an exact release.
+`mise use python@<version>`, or `mise use rust@<version>` to select and install
+its version. For example, `mise use node@22` follows 22.x; use a full version
+to pin an exact release.
 Run `mise install` after entering an existing project with missing tool versions.
+
+mise owns Python and uv installations; uv manages project environments,
+dependencies, and isolated CLI tools. uv treats mise's Python as a system
+interpreter. `UV_PYTHON_PREFERENCE=only-system` prevents it from selecting its
+own managed interpreters, and `UV_PYTHON_DOWNLOADS=never` disables automatic
+Python downloads. Install missing versions with mise, not `uv python install`.
+Python `.python-version` files are enabled for mise so both tools can use the
+same project version request; an explicit `mise.toml` version takes precedence
+in mise, so keep the requests consistent.
+
+To install only these tools on an existing machine, run `mise install python uv`.
+Check `mise which python`, `mise which uv`, and
+`mise exec -- uv python find --system` before removing older installations.
+Existing virtual environments and commands
+such as `pre-commit` or `pytest` are not migrated automatically; recreate or
+reinstall them with the new interpreter before uninstalling their old Python.
+Existing uv-managed Python installations are left untouched for environments
+that still depend on them. `mise sync python --uv` is not needed for this
+mise-owned installation model.
 
 Rust uses rustup underneath. Reading project `rust-toolchain.toml` files is
 enabled so the global `stable` default does not override a project's toolchain.
@@ -252,25 +273,25 @@ commands fail rather than guessing a missing main/develop branch. Some upstream
 shortcuts reset, clean, delete branches, or force-push; check their definitions
 before using them.
 
-When Git is available, the profile imports the pinned posh-git module before
-mise and zoxide wrap the prompt. Inside repositories (including subdirectories
-and worktrees), the prompt shows the branch and merge/rebase state. It never
-fetches from the network. Git command and branch-name tab completion is also
-enabled.
+[`powershell\prompt.ps1`](powershell/prompt.ps1) provides a branch-only prompt,
+for example `PS C:\src\repo [main]> `. It reads the nearest repository's
+`.git\HEAD` directly, including from subdirectories and worktree/submodule
+`gitdir` pointers. Branch changes appear on the next prompt; detached HEAD
+shows `[detached:<short-sha>]`. Outside repositories and in non-filesystem
+providers, it shows only the current path.
 
-File-status and stash scans are disabled to keep prompt overhead low: the
-prompt does **not** indicate modified, staged, untracked, or conflicted files,
-or upstream ahead/behind counts (posh-git obtains those from its status scan).
-Use `git status` for those details. Git metadata queries still add some overhead;
-this is not a zero-cost prompt. To enable file-status details for the current
-session, run `$GitPromptSettings.EnableFileStatus = $true`. Change the setting
-in `powershell\profile.ps1` to make that choice reproducible.
+The prompt does not import posh-git, launch Git processes, scan working-tree
+status, or use the network. It does not add Git tab completion or display
+merge/rebase state, file/stash status, or upstream ahead/behind counts.
+Use `git status` for those details; the Git aliases above remain available.
+Unreadable or invalid Git metadata produces a warning without breaking the
+prompt.
 
-Startup never installs modules or checks the gallery. If the pinned module is
-missing or cannot load, the profile warns with a setup command and continues
-loading aliases, mise, and zoxide. After changing the pin, run setup and open a
-new PowerShell 7 terminal; an existing custom prompt is not forcibly replaced.
-Uninstall restores the previous profile but leaves installed modules in place.
+The custom prompt is installed before mise and zoxide wrap it; reloading the
+profile preserves those wrappers. Open a new PowerShell 7 terminal when
+switching from posh-git or changing the prompt definition. Previously installed
+posh-git modules are left on disk but are no longer used by this profile.
+Uninstall restores the previous profile and leaves installed modules in place.
 
 The profile points Herdr at this clone's `herdr\config.toml`, replacing any
 inherited `HERDR_CONFIG_PATH`. Launch Herdr from PowerShell 7 after loading the
