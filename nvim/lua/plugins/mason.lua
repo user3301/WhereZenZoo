@@ -2,6 +2,7 @@
 return {
   "mason-org/mason.nvim",
   opts = {
+    ensure_installed = { "roslyn" },
     registries = {
       "github:mason-org/mason-registry",
       "github:Crashdummyy/mason-registry",

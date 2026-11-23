@@ -8,6 +8,9 @@ local servers = dofile(vim.fs.joinpath(root, "nvim", "lua", "plugins", "lsp.lua"
 assert(servers.nil_ls == nil, "The Windows config must not start the Nix language server")
 assert(servers.omnisharp.enabled == false, "Roslyn replaces OmniSharp")
 
+local mason = dofile(vim.fs.joinpath(root, "nvim", "lua", "plugins", "mason.lua"))
+assert(vim.tbl_contains(mason.opts.ensure_installed or {}, "roslyn"), "Mason must provision the Roslyn replacement")
+
 local original_executable = vim.fn.executable
 local python = vim.fs.joinpath(root, ".venv", "Scripts", "python.exe")
 local pylsp = vim.fs.joinpath(root, ".venv", "Scripts", "pylsp.exe")
