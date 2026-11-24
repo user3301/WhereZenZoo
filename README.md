@@ -262,16 +262,9 @@ list). `copilot` uses
 `agency copilot` when Agency is on PATH, otherwise the standalone GitHub Copilot
 CLI. Agency itself is not installed by this repo.
 
-[`powershell\git-aliases.ps1`](powershell/git-aliases.ps1) provides the
-[oh-my-zsh git plugin](https://github.com/ohmyzsh/ohmyzsh/tree/master/plugins/git)
-alias list in PowerShell, including branch-aware commands. Standalone zsh
-helpers such as `gbda`, `gccd`, and `gdv` are not included. Seven names already
-belong to PowerShell (`gc`, `gcm`, `gcs`, `gl`, `gm`, `gp`, `gpv`) and remain
-unchanged. PowerShell cannot distinguish names by case, so upstream `gbD`,
-`gbgD`, and `gcB` are instead `gbdf`, `gbgdf`, and `gcbf`. Branch-aware
-commands fail rather than guessing a missing main/develop branch. Some upstream
-shortcuts reset, clean, delete branches, or force-push; check their definitions
-before using them.
+Git shortcuts are not loaded by the profile; use `git` commands directly.
+Open a new PowerShell terminal to stop using shortcuts loaded by an older
+profile. PowerShell's built-in aliases remain unchanged.
 
 [`powershell\prompt.ps1`](powershell/prompt.ps1) provides a branch-only prompt,
 for example `PS C:\src\repo [main]> `. It reads the nearest repository's
@@ -283,7 +276,7 @@ providers, it shows only the current path.
 The prompt does not import posh-git, launch Git processes, scan working-tree
 status, or use the network. It does not add Git tab completion or display
 merge/rebase state, file/stash status, or upstream ahead/behind counts.
-Use `git status` for those details; the Git aliases above remain available.
+Use `git status` for those details.
 Unreadable or invalid Git metadata produces a warning without breaking the
 prompt.
 
