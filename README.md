@@ -174,6 +174,7 @@ to stop using the repo override.
 | Node.js | `22` (latest available 22.x release) |
 | Python | `3.11` (latest available 3.11.x release) |
 | uv | `latest` stable release |
+| Aspire CLI | `17.0.0` (exact version) |
 
 Setup installs mise and connects its configuration, but does **not** download or
 upgrade its managed tools. After setup, open a new PowerShell 7 terminal and run:
@@ -187,6 +188,7 @@ go version
 node --version
 python --version
 uv --version
+aspire --version
 ```
 
 The profile activates mise when its executable is available, so selected tools
@@ -207,6 +209,10 @@ From a project directory, use `mise use go@<version>`, `mise use node@<version>`
 its version. For example, `mise use node@22` follows 22.x; use a full version
 to pin an exact release.
 Run `mise install` after entering an existing project with missing tool versions.
+
+Aspire CLI is pinned to an exact version; update its entry deliberately when
+upgrading. mise manages the CLI, not the SDKs or container runtime an Aspire
+application may require.
 
 mise owns Python and uv installations; uv manages project environments,
 dependencies, and isolated CLI tools. uv treats mise's Python as a system

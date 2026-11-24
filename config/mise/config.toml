@@ -4,6 +4,7 @@ go = "latest"
 node = "22"
 python = "3.11"
 uv = "latest"
+aspire = "17.0.0"
 
 [env]
 UV_PYTHON_PREFERENCE = "only-system"
